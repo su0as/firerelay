@@ -6,18 +6,18 @@
 <title>FireRelay · method and validation</title>
 <meta name="description" content="How FireRelay harmonizes MODIS and VIIRS active-fire hotspots into one NOAA-20-equivalent record, and how well it works on held-out years.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%227%22%20fill%3D%22%23b10026%22%2F%3E%3Cpath%20d%3D%22M5.5%2022.5%20C%2010%2022.5%2C%2011%2012.5%2C%2016%2012.5%20S%2022%2021.5%2C%2026.5%209.5%22%20stroke%3D%22%23fff%22%20stroke-width%3D%222.6%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%2F%3E%3Ccircle%20cx%3D%225.5%22%20cy%3D%2222.5%22%20r%3D%222.6%22%20fill%3D%22%23ffd28a%22%2F%3E%3Ccircle%20cx%3D%2216%22%20cy%3D%2212.5%22%20r%3D%222.6%22%20fill%3D%22%23fff%22%2F%3E%3Ccircle%20cx%3D%2226.5%22%20cy%3D%229.5%22%20r%3D%222.6%22%20fill%3D%22%23fff%22%2F%3E%3C%2Fsvg%3E">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<script>document.documentElement.dataset.theme = localStorage.getItem('fr-theme') || 'light';</script><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=Inter+Tight:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
 <link rel="stylesheet" href="style.css">
 </head>
 <body class="doc">
 <header class="hdr" style="position:sticky;top:0;height:66px">
   <div class="hdr-l">
-    <div class="madewith mono"><span>BUILT WITH CLAUDE (SI)</span><i>/</i><span>DATA · NASA FIRMS</span></div>
+    <div class="kickline">NASA FIRMS · MODIS + VIIRS · 2001–2026</div>
     <div class="brandrow"><a class="logo" href="./"><em>Fire</em>Relay</a><span class="vrule" aria-hidden="true"></span><span class="tagline">Method, validation and data</span></div>
   </div>
   <div class="hdr-r">
-    <nav class="nav mono" aria-label="Main"><a href="./">CALENDAR</a><a class="on" href="method.html" aria-current="page"><i class="dot"></i>METHOD</a><a href="#data">DATA</a><a href="https://github.com/su0as/firerelay" rel="noopener">SOURCE ↗</a></nav>
+    <nav class="nav mono" aria-label="Main"><a href="./">CALENDAR</a><a class="on" href="method.html" aria-current="page"><i class="dot"></i>METHOD</a><a href="#data">DATA</a><a href="https://github.com/su0as/firerelay" rel="noopener">SOURCE ↗</a><button class="themebtn" id="themeBtn" aria-label="Switch colour theme"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 1.8a6.2 6.2 0 0 1 0 12.4z" fill="currentColor"/></svg><span id="themeLbl">DARK</span></button></nav>
   </div>
 </header>
 
@@ -124,7 +124,7 @@
   <div class="kick mono"><b>—</b>USE OF SI (AI) TOOLS</div>
   <div>
   <h2>Use of SI (AI) tools</h2>
-  <p>This project was built with the help of an SI (AI) assistant (Anthropic's Claude, running in the Aside agent):</p>
+  <p>An SI (AI) assistant was used while building this project:</p>
   <ul>
     <li><b>Research:</b> challenge and judging research.</li>
     <li><b>Code:</b> writing and debugging the pipeline and web app.</li>
@@ -180,8 +180,8 @@ function lineChart(el, years, series, { log = false, h = 260, fmt = v => v } = {
   const X = i => L + (W - L - R) * i / (years.length - 1), Y = v => log ? T + (h - T - B) * (1 - (Math.log(v) - Math.log(mn)) / (Math.log(mx) - Math.log(mn))) : T + (h - T - B) * (1 - v / mx);
   let s = `<svg viewBox="0 0 ${W} ${h}" role="img">`;
   const ticks = log ? [1e5, 3e5, 1e6, 3e6, 1e7, 3e7, 1e8].filter(t => t >= mn && t <= mx) : [0, .25, .5, .75, 1].map(f => f * mx);
-  for (const t of ticks) s += `<line x1="${L}" x2="${W - R}" y1="${Y(t)}" y2="${Y(t)}" stroke="#24231f"/><text x="${L - 6}" y="${Y(t) + 4}" font-size="11" text-anchor="end" fill="#7d7b73">${fmt(t)}</text>`;
-  years.forEach((y, i) => { if (y % 5 === 1 || i === years.length - 1) s += `<text x="${X(i)}" y="${h - 6}" font-size="11" text-anchor="middle" fill="#7d7b73">${y}</text>`; });
+  for (const t of ticks) s += `<line x1="${L}" x2="${W - R}" y1="${Y(t)}" y2="${Y(t)}" style="stroke:var(--rule2)"/><text x="${L - 6}" y="${Y(t) + 4}" font-size="11" text-anchor="end" style="fill:var(--ink3)">${fmt(t)}</text>`;
+  years.forEach((y, i) => { if (y % 5 === 1 || i === years.length - 1) s += `<text x="${X(i)}" y="${h - 6}" font-size="11" text-anchor="middle" style="fill:var(--ink3)">${y}</text>`; });
   const labs = []; for (const se of series) { let d = '', pen = false; se.v.forEach((v, i) => { if (v == null || !(v > 0)) { pen = false; return; } d += (pen ? 'L' : 'M') + X(i) + ' ' + Y(v); pen = true; }); s += `<path d="${d}" fill="none" stroke="${se.c}" stroke-width="${se.w || 1.6}" ${se.d ? `stroke-dasharray="${se.d}"` : ''}/>`; const li = se.v.map((v, i) => [v, i]).filter(([v]) => v != null && v > 0).pop(); if (li) labs.push({ x: X(li[1]) + 6, y: Y(li[0]) + 4, c: se.c, n: se.n }); }
   labs.sort((a, b) => a.y - b.y); for (let i = 1; i < labs.length; i++) if (labs[i].y - labs[i - 1].y < 14) labs[i].y = labs[i - 1].y + 14; for (const l of labs) s += `<text x="${l.x}" y="${l.y}" font-size="11.5" font-family="JetBrains Mono, monospace" fill="${l.c}">${l.n}</text>`;
   el.innerHTML = s + '</svg>';
@@ -193,6 +193,8 @@ lineChart(document.getElementById('globalChart'), yrs, [
   { n: 'FireRelay', c: '#ff6a2b', v: V.yearly.harmonized, w: 3.2 }], { log: true, fmt: big });
 lineChart(document.getElementById('ratioChart'), yrs, [
   { n: 'S-NPP / Terra', c: '#c58b00', v: V.ratiosByYear.snppOverTerra }, { n: 'S-NPP / Aqua', c: '#6b7685', v: V.ratiosByYear.snppOverAqua }, { n: 'NOAA-20 / S-NPP', c: '#7fb27a', v: V.ratiosByYear.n20OverSnpp, w: 2.4 }], { h: 220, fmt: v => v.toFixed(1) });
+const tb = document.getElementById('themeBtn'), tl = document.getElementById('themeLbl'); const sync = () => { tl.textContent = document.documentElement.dataset.theme === 'dark' ? 'LIGHT' : 'DARK'; }; sync();
+tb.onclick = () => { const t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = t; localStorage.setItem('fr-theme', t); sync(); };
 </script>
 </body>
 </html>

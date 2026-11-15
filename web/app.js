@@ -28,13 +28,20 @@ fetch('data/validation.json').then(r => r.json()).then(v => { $('#stErr').textCo
 fetch('data/build_stats.json').then(r => r.json()).then(s => { $('#stDet').textContent = Math.round(s.rows / 1e6) + 'M'; }).catch(() => {});
 
 // ---------------- colour ----------------
-const STOPS = ['#3a1a12', '#661d10', '#9a2610', '#cc3d10', '#f0641c', '#fb9a37', '#ffc96e', '#ffe7b8'];
-const ZERO = '#191816', NODATA = '#0f0f0e';
+const PAL = {
+  dark: { stops: ['#3a1a12', '#661d10', '#9a2610', '#cc3d10', '#f0641c', '#fb9a37', '#ffc96e', '#ffe7b8'], zero: '#191816', nodata: '#0f0f0e', empty: 'rgba(236,235,228,0.035)', hatch: 'rgba(11,11,10,.55)', glow: true, alpha: [0.62, 0.3],
+    div: ['#2d5b9c', '#3b6fae', '#24334a', '#22211e', '#5e2a17', '#b23e16', '#ff6a2b'], sens: { 1: '#8a6a4a', 2: '#5b8fd9', 3: '#7fb27a' }, ink: '#ecebe4', ink3: '#6d6b64', ink4: '#3a3935', rule: '#1f1e1b', line: '#2b2a27', bg: '#0b0b0a', amber: '#ffb547', cold: '#5b8fd9', bars: { 1: '#b5471c', 2: '#d9531f', 3: '#ff6a2b' }, aoi: '#ecebe4', recFill: '#ecebe4', recStroke: 'none' },
+  light: { stops: ['#f7e3cf', '#f3c49b', '#ec9a62', '#e06e37', '#c8481c', '#a12e10', '#741d0a', '#401005'], zero: '#e7e3d9', nodata: '#efece5', empty: 'rgba(23,22,15,0.045)', hatch: 'rgba(255,255,255,.62)', glow: false, alpha: [0.78, 0.2],
+    div: ['#2f62b0', '#6f95cf', '#cbd7ea', '#e3dfd5', '#f1c3a4', '#de7646', '#b3300f'], sens: { 1: '#a8865a', 2: '#2f62b0', 3: '#4b8a46' }, ink: '#17160f', ink3: '#8c887d', ink4: '#c9c4b8', rule: '#e0dbd0', line: '#d3cec2', bg: '#f4f2ec', amber: '#b5600f', cold: '#2f62b0', bars: { 1: '#e39a74', 2: '#da6a3e', 3: '#c8401a' }, aoi: '#17160f', recFill: '#ffffff', recStroke: '#17160f' },
+};
+const theme = () => document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+let P = PAL[theme()];
+let STOPS = P.stops, ZERO = P.zero, NODATA = P.nodata;
 const hex = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
-const STOPRGB = STOPS.map(hex);
+let STOPRGB = STOPS.map(hex);
 function rampRGB(t) { t = clamp(t, 0, 1); const x = t * (STOPS.length - 1), i = Math.min(STOPS.length - 2, Math.floor(x)), f = x - i, a = STOPRGB[i], b = STOPRGB[i + 1]; return [0, 1, 2].map(k => Math.round(a[k] + (b[k] - a[k]) * f)); }
 const rgb = c => `rgb(${c[0]},${c[1]},${c[2]})`;
-const GRAD = `linear-gradient(90deg,${STOPS.join(',')})`;
+let GRAD = `linear-gradient(90deg,${STOPS.join(',')})`;
 // quantile-rank scale: even use of the ramp across the area's own distribution
 function makeScale(vals) {
   const nz = Float64Array.from(vals.filter(v => v > 0.5 && isFinite(v))).sort();
@@ -42,7 +49,9 @@ function makeScale(vals) {
   const q = p => nz.length ? nz[Math.min(nz.length - 1, Math.floor(p * nz.length))] : 0;
   return { t: v => (v == null || isNaN(v) || v <= 0.5) ? -1 : 0.06 + 0.94 * rank(v), color: v => (v == null || isNaN(v)) ? NODATA : v <= 0.5 ? ZERO : rgb(rampRGB(0.06 + 0.94 * rank(v))), q, n: nz.length };
 }
-const DIV = [{ t: 0.25, c: '#2d5b9c', l: '<¼' }, { t: 0.5, c: '#3b6fae', l: '¼–½' }, { t: 0.8, c: '#24334a', l: '½–0.8' }, { t: 1.25, c: '#22211e', l: 'typical' }, { t: 2, c: '#5e2a17', l: '1.25–2×' }, { t: 4, c: '#b23e16', l: '2–4×' }, { t: Infinity, c: '#ff6a2b', l: '>4×' }];
+const DIVT = [0.25, 0.5, 0.8, 1.25, 2, 4, Infinity], DIVL = ['<¼', '¼–½', '½–0.8', 'typical', '1.25–2×', '2–4×', '>4×'];
+let DIV = DIVT.map((t, i) => ({ t, c: P.div[i], l: DIVL[i] }));
+function applyPalette() { P = PAL[theme()]; STOPS = P.stops; ZERO = P.zero; NODATA = P.nodata; STOPRGB = STOPS.map(hex); GRAD = `linear-gradient(90deg,${STOPS.join(',')})`; DIV = DIVT.map((t, i) => ({ t, c: P.div[i], l: DIVL[i] })); }
 const divColor = r => (r == null || isNaN(r)) ? NODATA : DIV.find(d => r < d.t).c;
 
 // ---------------- map ----------------
@@ -65,10 +74,10 @@ const HeatLayer = L.Layer.extend({
       const r = Math.floor(it.c / 1440), cc = it.c % 1440, s0 = r * 0.25 - 90, w0 = cc * 0.25 - 180;
       const p1 = m.latLngToContainerPoint([s0 + 0.25, w0]), p2 = m.latLngToContainerPoint([s0, w0 + 0.25]);
       const w = p2.x - p1.x, h = p2.y - p1.y; const g = Math.max(0.6, Math.min(1.5, w * 0.06));
-      if (it.t < 0) { x.fillStyle = 'rgba(236,235,228,0.035)'; x.fillRect(p1.x + g, p1.y + g, w - 2 * g, h - 2 * g); continue; }
-      const col = rampRGB(it.t); x.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},${0.62 + 0.3 * it.t})`; x.fillRect(p1.x + g, p1.y + g, w - 2 * g, h - 2 * g);
-      if (d.est && w > 6) { x.strokeStyle = 'rgba(11,11,10,.5)'; x.lineWidth = 1; x.save(); x.beginPath(); x.rect(p1.x + g, p1.y + g, w - 2 * g, h - 2 * g); x.clip(); x.beginPath(); for (let k = -h; k < w; k += 5) { x.moveTo(p1.x + k, p1.y + h); x.lineTo(p1.x + k + h, p1.y); } x.stroke(); x.restore(); }
-      if (it.t > 0.9) glow.push([p1.x + w / 2, p1.y + h / 2, Math.max(w, h), col]);
+      if (it.t < 0) { x.fillStyle = P.empty; x.fillRect(p1.x + g, p1.y + g, w - 2 * g, h - 2 * g); continue; }
+      const col = rampRGB(it.t); x.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},${P.alpha[0] + P.alpha[1] * it.t})`; x.fillRect(p1.x + g, p1.y + g, w - 2 * g, h - 2 * g);
+      if (d.est && w > 6) { x.strokeStyle = P.hatch; x.lineWidth = 1; x.save(); x.beginPath(); x.rect(p1.x + g, p1.y + g, w - 2 * g, h - 2 * g); x.clip(); x.beginPath(); for (let k = -h; k < w; k += 5) { x.moveTo(p1.x + k, p1.y + h); x.lineTo(p1.x + k + h, p1.y); } x.stroke(); x.restore(); }
+      if (P.glow && it.t > 0.9) glow.push([p1.x + w / 2, p1.y + h / 2, Math.max(w, h), col]);
     }
     x.globalCompositeOperation = 'lighter';
     for (const [cx, cy, s, col] of glow) { const gr = x.createRadialGradient(cx, cy, 0, cx, cy, s * 1.4); gr.addColorStop(0, `rgba(${col[0]},${col[1]},${col[2]},.16)`); gr.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = gr; x.fillRect(cx - s * 1.4, cy - s * 1.4, s * 2.8, s * 2.8); }
@@ -201,7 +210,7 @@ async function setAOI(aoi, { fit = true, push = true } = {}) {
   $('#aoiMeta').textContent = 'HARMONIZING 26 YEARS…';
   $('#calendar').innerHTML = '<div class="loading">HARMONIZING 26 YEARS OF HOTSPOTS</div>';
   aoiLayer.clearLayers(); drawLayer.clearLayers(); map.removeLayer(peak);
-  const gl = L.geoJSON(aoi.geometry, { style: { color: '#ecebe4', weight: 1.2, opacity: 0.85, fill: false, dashArray: '3 4' }, interactive: false }).addTo(aoiLayer);
+  const gl = L.geoJSON(aoi.geometry, { style: { color: P.aoi, weight: 1.2, opacity: 0.85, fill: false, dashArray: '3 4' }, interactive: false }).addTo(aoiLayer);
   if (fit) map.flyToBounds(gl.getBounds(), { padding: [30, 30], maxZoom: 8, duration: 1.1 });
   const weights = cellWeights(aoi.geometry); state.cells = weights;
   if (!weights.size) { $('#calendar').innerHTML = '<p class="note">This area is smaller than one 0.25° cell. Draw a slightly larger area.</p>'; return; }
@@ -230,7 +239,7 @@ function setMonth(m, { force = false } = {}) {
   const cells = []; let best = null;
   for (const [c, w, cell] of s.used) { const v = cell ? w * harmCell(cell, m) : 0; const t = state.cellScale.t(v); cells.push({ c, t }); if (v > 0 && (!best || v > best.v)) best = { c, v }; }
   heat.setData({ cells, est });
-  if (best && best.v >= 1) { const r = Math.floor(best.c / 1440), cc = best.c % 1440; peak.setLatLng([r * 0.25 - 90 + 0.125, cc * 0.25 - 180 + 0.125]); if (!map.hasLayer(peak)) peak.addTo(map); const b = peak.getElement() && peak.getElement().querySelector('b'); if (b) b.textContent = `PEAK CELL ${fmt(best.v)}`; } else map.removeLayer(peak);
+  if (best && best.v >= 1) { const r = Math.floor(best.c / 1440), cc = best.c % 1440, ll = [r * 0.25 - 90 + 0.125, cc * 0.25 - 180 + 0.125]; peak.setLatLng(ll); if (!map.hasLayer(peak)) peak.addTo(map); const el = peak.getElement(), b = el && el.querySelector('b'); if (b) { b.textContent = `PEAK CELL ${fmt(best.v)}`; const px = map.latLngToContainerPoint(ll).x; el.querySelector('.pulse').classList.toggle('left', px > map.getSize().x - 170); } } else map.removeLayer(peak);
   const [y, mo] = ym(m);
   $('#mapK1').textContent = `${MON[mo].toUpperCase()} ${y}`; $('#mapK2').textContent = SRCNAME[srcOf(m)] || '';
   // calendar highlight
@@ -289,7 +298,7 @@ function cellTip(m) {
     `<div class="tv"><b>${fmt(v)}</b> HOTSPOTS · NOAA-20 UNITS${src !== 3 ? `<br>80% RANGE ${fmt(lo)}–${fmt(hi)}` : ''}<br>${md > 0 ? `<b>${xfmt(v / md)}×</b> A TYPICAL ${MON[mo].toUpperCase()} (${fmt(md)})` : `TYPICAL ${MON[mo].toUpperCase()}: ${fmt(md)}`}${s.rank[m] ? ` · RANK ${s.rank[m]}/${s.nYears[mo]}` : ''}</div>` +
     `<div class="ts">${SRCLONG[src]}<br>RAW · TERRA ${fmt(s.T[m])} · AQUA ${fmt(s.A[m])} · S-NPP ${AV[2][m] ? fmt(s.SN[m]) : '–'} · NOAA-20 ${AV[3][m] ? fmt(s.N2[m]) : '–'}</div>`;
 }
-const SENSCOL = { 1: '#8a6a4a', 2: '#5b8fd9', 3: '#7fb27a' };
+const SENSCOL = new Proxy({}, { get: (_, k) => P.sens[k] });
 function renderCalendar() {
   if (state.step === 'week') return renderWeekly();
   const s = state.series, el = $('#calendar'), W = Math.max(380, el.clientWidth || 430);
@@ -297,34 +306,34 @@ function renderCalendar() {
   const H = top + (NYR + 1.6) * (ch + gap) + 4, sc = state.monthScale;
   const annual = []; for (let y = 0; y < NYR; y++) { let t = 0, ok = true; for (let j = 0; j < 12; j++) { const v = s.H[y * 12 + j]; if (isNaN(v) || y * 12 + j > ERA.last) ok = false; else t += v; } annual.push({ t, ok: ok && y * 12 + 11 <= LASTFULL }); }
   const amax = Math.max(1, ...annual.map(a => a.t));
-  let g = `<svg viewBox="0 0 ${W} ${H}" role="grid" aria-label="Monthly burning calendar ${Y0} to ${Y0 + NYR - 1}. Rows are years, columns are months."><defs><pattern id="hatch" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="4" stroke="rgba(11,11,10,.55)" stroke-width="1.3"/></pattern></defs>`;
+  let g = `<svg viewBox="0 0 ${W} ${H}" role="grid" aria-label="Monthly burning calendar ${Y0} to ${Y0 + NYR - 1}. Rows are years, columns are months."><defs><pattern id="hatch" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="4" stroke="${P.hatch}" stroke-width="1.3"/></pattern></defs>`;
   g += `<rect id="rowhl" class="rowhl" x="0" y="0" width="${W}" height="${ch + 2}" visibility="hidden"/>`;
   MON.forEach((mn, j) => g += `<text x="${LW + j * (cw + gap) + cw / 2}" y="9" text-anchor="middle">${mn.toUpperCase().slice(0, 1)}</text>`);
   g += `<text x="${W - RW + 6}" y="9">YEAR</text>`;
   for (let y = 0; y < NYR; y++) {
     const yy = top + y * (ch + gap), m0 = y * 12, src = srcOf(Math.min(m0 + 6, ERA.last));
-    g += `<text x="${LW - 9}" y="${yy + ch - 2}" text-anchor="end" style="font-size:8.5px">${Y0 + y}</text><rect x="${LW - 5}" y="${yy}" width="2" height="${ch}" fill="${SENSCOL[src] || '#333'}" opacity=".8"/>`;
+    g += `<text x="${LW - 9}" y="${yy + ch - 2}" text-anchor="end" style="font-size:8.5px">${Y0 + y}</text><rect x="${LW - 5}" y="${yy}" width="2" height="${ch}" fill="${SENSCOL[src] || P.ink4}" opacity=".8"/>`;
     for (let j = 0; j < 12; j++) {
       const m = m0 + j, v = s.H[m], x = LW + j * (cw + gap);
-      if (m > ERA.last) { g += `<rect x="${x + .5}" y="${yy + .5}" width="${cw - 1}" height="${ch - 1}" fill="none" stroke="#1f1e1b" stroke-dasharray="2 2"/>`; continue; }
+      if (m > ERA.last) { g += `<rect x="${x + .5}" y="${yy + .5}" width="${cw - 1}" height="${ch - 1}" fill="none" stroke="${P.rule}" stroke-dasharray="2 2"/>`; continue; }
       const fill = state.view === 'anom' ? divColor(s.med[j] > 0 ? v / s.med[j] : (v > 0 ? 9 : 1)) : sc.color(v);
       g += `<rect class="cell" style="--r:${y};--c:${j}" data-m="${m}" x="${x}" y="${yy}" width="${cw}" height="${ch}" rx="1" fill="${fill}" tabindex="${m === state.m ? 0 : -1}" role="gridcell" aria-label="${MONL[j]} ${Y0 + y}: ${isNaN(v) ? 'no data' : fmt(v) + ' hotspots'}"/>`;
       if (srcOf(m) === 1) g += `<rect x="${x}" y="${yy}" width="${cw}" height="${ch}" rx="1" fill="url(#hatch)" pointer-events="none"/>`;
-      if (m === PARTIAL) g += `<rect x="${x + .5}" y="${yy + .5}" width="${cw - 1}" height="${ch - 1}" fill="none" stroke="#ecebe4" stroke-dasharray="2 2" pointer-events="none"/>`;
-      if (s.rank[m] === 1 && s.nYears[j] >= 10 && v > 0 && s.med[j] > 0 && v / s.med[j] >= 1.25) g += `<circle cx="${x + cw - 4}" cy="${yy + 4}" r="2.2" fill="#ecebe4" pointer-events="none"/>`;
+      if (m === PARTIAL) g += `<rect x="${x + .5}" y="${yy + .5}" width="${cw - 1}" height="${ch - 1}" fill="none" stroke="${P.ink}" stroke-dasharray="2 2" pointer-events="none"/>`;
+      if (s.rank[m] === 1 && s.nYears[j] >= 10 && v > 0 && s.med[j] > 0 && v / s.med[j] >= 1.25) g += `<circle cx="${x + cw - 4}" cy="${yy + 4}" r="2.2" fill="${P.recFill}" stroke="${P.recStroke}" stroke-width=".8" pointer-events="none"/>`;
     }
     const a = annual[y], bw = Math.max(1, (RW - 30) * a.t / amax);
-    g += `<rect class="ytot" x="${W - RW + 6}" y="${yy + 3}" width="${bw}" height="${ch - 6}" fill="${a.ok ? '#6d6b64' : '#3a3935'}"/><text x="${W - RW + 10 + bw}" y="${yy + ch - 3}" style="font-size:8.5px">${a.t ? kfmt(a.t) : ''}</text>`;
+    g += `<rect class="ytot" x="${W - RW + 6}" y="${yy + 3}" width="${bw}" height="${ch - 6}" fill="${a.ok ? P.ink3 : P.ink4}"/><text x="${W - RW + 10 + bw}" y="${yy + ch - 3}" style="font-size:8.5px">${a.t ? kfmt(a.t) : ''}</text>`;
   }
   const ty = top + (NYR + 0.6) * (ch + gap);
   g += `<text x="${LW - 9}" y="${ty + ch - 3}" text-anchor="end" style="fill:var(--ink)">TYP</text>`;
-  for (let j = 0; j < 12; j++) { const x = LW + j * (cw + gap), v = s.med[j]; g += `<rect x="${x}" y="${ty}" width="${cw}" height="${ch}" rx="1" fill="${state.view === 'anom' ? '#22211e' : sc.color(v)}" stroke="#ecebe4" stroke-opacity=".5" stroke-width=".6"><title>Typical ${MONL[j]} (median ${Y0}–${BASE_Y1}): ${fmt(v)}</title></rect>`; }
+  for (let j = 0; j < 12; j++) { const x = LW + j * (cw + gap), v = s.med[j]; g += `<rect x="${x}" y="${ty}" width="${cw}" height="${ch}" rx="1" fill="${state.view === 'anom' ? P.div[3] : sc.color(v)}" stroke="${P.ink}" stroke-opacity=".5" stroke-width=".6"><title>Typical ${MONL[j]} (median ${Y0}–${BASE_Y1}): ${fmt(v)}</title></rect>`; }
   el.innerHTML = g + '</svg>';
   // legend
   let lg = '';
   if (state.view === 'anom') lg = DIV.map(d => `<span class="sw"><i style="background:${d.c}"></i>${d.l}</span>`).join('') + '<span>VS TYPICAL MONTH</span>';
   else lg = `<span class="ramp"><span class="bar" style="background:${GRAD}"></span><span class="ticks"><span>${fmt(sc.q(0))}</span><span>${kfmt(sc.q(.5))}</span><span>${kfmt(sc.q(1))}</span></span></span><span>HOTSPOTS / MONTH</span>`;
-  lg += `<span class="sw"><i style="background:#cc3d10;background-image:repeating-linear-gradient(45deg,rgba(11,11,10,.6) 0 1.4px,transparent 1.4px 4px)"></i>MODIS EST.</span><span class="sw"><i style="background:${SENSCOL[1]};width:2px"></i><i style="background:${SENSCOL[2]};width:2px"></i><i style="background:${SENSCOL[3]};width:2px"></i>SENSOR</span><span class="sw"><i style="background:#ecebe4;width:5px;height:5px;border-radius:50%"></i>RECORD</span>`;
+  lg += `<span class="sw"><i style="background:${STOPS[4]};background-image:repeating-linear-gradient(45deg,${P.hatch} 0 1.4px,transparent 1.4px 4px)"></i>MODIS EST.</span><span class="sw"><i style="background:${SENSCOL[1]};width:2px"></i><i style="background:${SENSCOL[2]};width:2px"></i><i style="background:${SENSCOL[3]};width:2px"></i>SENSOR</span><span class="sw"><i style="background:${P.recFill};border:1px solid ${P.recStroke === 'none' ? P.recFill : P.recStroke};width:6px;height:6px;border-radius:50%"></i>RECORD</span>`;
   $('#calLegend').innerHTML = lg;
   wireGrid(el.querySelector('svg'), ch, top, gap);
   const sel = $(`#calendar .cell[data-m="${state.m}"]`); if (sel) sel.classList.add('sel');
@@ -346,7 +355,7 @@ function renderWeekly() {
   const PER = 53, W = Math.max(380, el.clientWidth || 430), LW = 40, cw = (W - LW) / PER, ch = 12, gap = 1.5, top = 16, H = top + NY * (ch + gap) + 4, lastW = META.weekly.lastWeek;
   const sc = makeScale(Array.from(W8).filter((v, k) => k <= lastW));
   const wmed = []; for (let k = 0; k < PER; k++) { const xs = []; for (let y = 0; Y0 + y <= BASE_Y1; y++) xs.push(W8[y * PER + k]); xs.sort((a, b) => a - b); wmed.push(xs[xs.length >> 1]); }
-  let g = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Weekly burning calendar: rows are years, columns are weeks."><defs><pattern id="hatchw" width="3" height="3" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="3" stroke="rgba(11,11,10,.55)" stroke-width="1"/></pattern></defs>`;
+  let g = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Weekly burning calendar: rows are years, columns are weeks."><defs><pattern id="hatchw" width="3" height="3" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="3" stroke="${P.hatch}" stroke-width="1"/></pattern></defs>`;
   MON.forEach((mn, j) => { const wk = Math.floor((Date.UTC(2001, j, 1) - Date.UTC(2001, 0, 1)) / 864e5 / 7); g += `<text x="${LW + wk * cw}" y="9">${mn.toUpperCase().slice(0, 1)}</text>`; });
   for (let y = 0; y < NY; y++) {
     const yy = top + y * (ch + gap); g += `<text x="${LW - 9}" y="${yy + ch - 3}" text-anchor="end">${Y0 + y}</text>`;
@@ -378,25 +387,25 @@ function buildTimeline() {
   const vmax = Math.max(1, ...Array.from(s.H).filter((v, m) => m <= ERA.last && !isNaN(v)));
   const hY = v => TL.base - (TL.base - TL.top) * Math.sqrt(Math.max(0, v) / vmax);
   const bw = Math.max(1, (TL.W - TL.L - TL.R) / (ERA.last + 1) - 0.6);
-  let g = `<defs><pattern id="hatchT" width="3" height="3" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="3" stroke="rgba(11,11,10,.6)" stroke-width="1"/></pattern></defs>`;
+  let g = `<defs><pattern id="hatchT" width="3" height="3" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="3" stroke="${P.hatch}" stroke-width="1"/></pattern></defs>`;
   const eras = [[0, ERA.snppStart - 1, 'TERRA + AQUA MODIS · ESTIMATED', SENSCOL[1]], [ERA.snppStart, ERA.n20Start - 1, 'S-NPP VIIRS · CROSS-CAL.', SENSCOL[2]], [ERA.n20Start, ERA.last, 'NOAA-20 VIIRS · OBSERVED', SENSCOL[3]]];
-  for (const [a, b, lab] of eras) g += `<text class="era" x="${tx(a) + 2}" y="13">${lab}</text>`;
-  for (let y = 0; y <= NY; y++) { const m = y * 12; if (m > ERA.last) break; g += `<line x1="${tx(m)}" x2="${tx(m)}" y1="${TL.base}" y2="${TL.base + (y % 5 === 0 ? 6 : 3)}" stroke="#3a3935"/>`; if (y % 5 === 0) g += `<text x="${tx(m)}" y="${TL.H - 6}" text-anchor="middle">${Y0 + y}</text>`; }
+  const SHORT = ['MODIS · EST.', 'S-NPP · CAL.', 'NOAA-20 · OBS.']; eras.forEach(([a, b, lab], i) => { const room = tx(i < 2 ? eras[i + 1][0] : ERA.last) - tx(a) - 12; const t = lab.length * 7.4 < room ? lab : SHORT[i]; g += `<text class="era" x="${tx(a) + 2}" y="13">${t}</text>`; });
+  for (let y = 0; y <= NY; y++) { const m = y * 12; if (m > ERA.last) break; g += `<line x1="${tx(m)}" x2="${tx(m)}" y1="${TL.base}" y2="${TL.base + (y % 5 === 0 ? 6 : 3)}" stroke="${P.ink4}"/>`; if (y % 5 === 0) g += `<text x="${tx(m)}" y="${TL.H - 6}" text-anchor="middle">${Y0 + y}</text>`; }
   g += `<g id="tlBars">`;
-  for (let m = 0; m <= ERA.last; m++) { const v = s.H[m]; if (isNaN(v)) continue; const y0 = hY(v), src = srcOf(m); const col = src === 3 ? '#ff6a2b' : src === 2 ? '#d9531f' : '#b5471c';
+  for (let m = 0; m <= ERA.last; m++) { const v = s.H[m]; if (isNaN(v)) continue; const y0 = hY(v), src = srcOf(m); const col = P.bars[src] || P.bars[1];
     g += `<rect class="tb" data-m="${m}" x="${tx(m) - bw / 2}" y="${y0}" width="${bw}" height="${Math.max(0.5, TL.base - y0)}" fill="${col}"/>`;
     if (src === 1) g += `<rect x="${tx(m) - bw / 2}" y="${y0}" width="${bw}" height="${Math.max(0.5, TL.base - y0)}" fill="url(#hatchT)" pointer-events="none"/>`; }
   g += `</g>`;
   // naive stitch overlay (raw counts as they come from each sensor)
   const modisAvg = m => { const k = AV[0][m] + AV[1][m]; return k ? (s.T[m] + s.A[m]) / k : NaN; };
   let d = '', pen = false; for (let m = 0; m <= ERA.last; m++) { const v = m >= ERA.n20Start ? s.N2[m] : m >= ERA.snppStart ? s.SN[m] : modisAvg(m); if (isNaN(v)) { pen = false; continue; } d += (pen ? 'L' : 'M') + tx(m).toFixed(1) + ' ' + hY(v).toFixed(1); pen = true; }
-  g += `<path id="tlCmp" d="${d}" fill="none" stroke="#5b8fd9" stroke-width="1.2" visibility="${state.cmp ? 'visible' : 'hidden'}"/>`;
+  g += `<path id="tlCmp" d="${d}" fill="none" stroke="${P.cold}" stroke-width="1.3" visibility="${state.cmp ? 'visible' : 'hidden'}"/>`;
   // relay track
   const ry = TL.base + 14;
   for (const [a, b, , col] of eras) g += `<line x1="${tx(a)}" x2="${tx(b)}" y1="${ry}" y2="${ry}" stroke="${col}" stroke-width="3"/>`;
-  for (const m of [ERA.snppStart, ERA.n20Start]) { const [y, mo] = ym(m); g += `<rect x="${tx(m) - 4}" y="${ry - 4}" width="8" height="8" transform="rotate(45 ${tx(m)} ${ry})" fill="#0b0b0a" stroke="#ecebe4"/><text class="ho" x="${tx(m) + 8}" y="${ry - 6}" style="fill:var(--ink2);font-size:8.5px">HANDOVER ${String(mo + 1).padStart(2, '0')}·${y}</text>`; }
-  g += `<line x1="${TL.L}" x2="${TL.W - TL.R}" y1="${TL.base}" y2="${TL.base}" stroke="#2b2a27"/>`;
-  g += `<g id="tlHead" class="tl-head"><line x1="0" x2="0" y1="${TL.top - 6}" y2="${TL.base + 20}" stroke="#ffb547" stroke-width="1.2"/><path d="M-5 ${TL.top - 12} h10 v6 l-5 5 l-5 -5z" fill="#ffb547"/></g>`;
+  for (const m of [ERA.snppStart, ERA.n20Start]) { const [y, mo] = ym(m); g += `<rect x="${tx(m) - 4}" y="${ry - 4}" width="8" height="8" transform="rotate(45 ${tx(m)} ${ry})" fill="${P.bg}" stroke="${P.ink}"/><text class="ho" x="${tx(m) + 8}" y="${ry - 6}" style="fill:var(--ink2);font-size:8.5px">HANDOVER ${String(mo + 1).padStart(2, '0')}·${y}</text>`; }
+  g += `<line x1="${TL.L}" x2="${TL.W - TL.R}" y1="${TL.base}" y2="${TL.base}" stroke="${P.line}"/>`;
+  g += `<g id="tlHead" class="tl-head"><line x1="0" x2="0" y1="${TL.top - 6}" y2="${TL.base + 20}" stroke="${P.amber}" stroke-width="1.2"/><path d="M-5 ${TL.top - 12} h10 v6 l-5 5 l-5 -5z" fill="${P.amber}"/></g>`;
   g += `<rect id="tlHit" x="0" y="0" width="${TL.W}" height="${TL.H}" fill="transparent"/>`;
   svg.innerHTML = g;
   TL.bars = [...svg.querySelectorAll('#tlBars .tb')];
@@ -488,7 +497,7 @@ function endDraw() { mode = null; map.dragging.enable(); map.doubleClickZoom.ena
 $('#drawRect').onclick = () => { endDraw(); mode = 'rect'; map.dragging.disable(); map.getContainer().classList.add('fb-draw'); $('#drawRect').classList.add('active'); $('#drawHint').textContent = 'Press and drag on the map.'; };
 $('#drawPoly').onclick = () => { endDraw(); mode = 'poly'; pts = []; map.doubleClickZoom.disable(); map.getContainer().classList.add('fb-draw'); $('#drawPoly').classList.add('active'); $('#drawHint').textContent = 'Click each corner; double-click to finish.'; };
 $('#drawClear').onclick = () => { endDraw(); drawLayer.clearLayers(); };
-const DRAWSTYLE = { color: '#ffb547', weight: 1.4, fillOpacity: 0.06, dashArray: '3 4' };
+const DRAWSTYLE = { color: P.amber, weight: 1.4, fillOpacity: 0.06, dashArray: '3 4' };
 map.on('mousedown', e => { if (mode !== 'rect') return; start = e.latlng; temp = L.rectangle([start, start], DRAWSTYLE).addTo(drawLayer); });
 map.on('mousemove', e => { if (mode === 'rect' && start && temp) temp.setBounds([start, e.latlng]); if (mode === 'poly' && pts.length && temp) temp.setLatLngs([...pts, e.latlng]); });
 map.on('mouseup', e => { if (mode !== 'rect' || !start) return; const b = L.latLngBounds(start, e.latlng); start = null; endDraw(); if (Math.abs(b.getEast() - b.getWest()) < 0.2 || Math.abs(b.getNorth() - b.getSouth()) < 0.2) { drawLayer.clearLayers(); $('#drawHint').textContent = 'Too small: draw at least about 25 km across.'; return; } setAOI({ ...boxAOI(b.getWest(), b.getSouth(), b.getEast(), b.getNorth()), name: 'Drawn rectangle' }); });
@@ -500,4 +509,11 @@ window.addEventListener('hashchange', () => { const a = readHash(); if (a && (!s
 setTimeout(() => map.invalidateSize(), 50);
 const fromHash = readHash();
 setAOI(fromHash || presetAOI(PRESETS.find(p => p.id === 'central-kalimantan') || PRESETS[0]), { push: !!fromHash }).then(() => { if (!fromHash && !/nointro/.test(location.search)) setTimeout(intro, 1400); });
+function syncThemeBtn() { const t = theme(); $('#themeLbl').textContent = t === 'dark' ? 'LIGHT' : 'DARK'; document.querySelector('meta[name=theme-color]').setAttribute('content', t === 'dark' ? '#0b0b0a' : '#f4f2ec'); }
+syncThemeBtn();
+$('#themeBtn').onclick = () => {
+  const t = theme() === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = t; localStorage.setItem('fr-theme', t); applyPalette(); syncThemeBtn();
+  aoiLayer.eachLayer(l => l.setStyle && l.setStyle({ color: P.aoi }));
+  if (state.series) { renderCalendar(); buildTimeline(); renderMapRamp(); setMonth(state.m, { force: true }); if (!$('#tableWrap').hidden) renderTable(); }
+};
 window.__fr = { state, setMonth, play, stop };

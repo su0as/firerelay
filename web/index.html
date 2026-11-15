@@ -7,8 +7,9 @@
 <meta name="description" content="FireRelay harmonizes NASA MODIS and VIIRS active-fire hotspots (FIRMS) into one continuous burning-activity calendar, 2001 to today, for any area on Earth.">
 <meta property="og:title" content="FireRelay · one fire record, MODIS to VIIRS">
 <meta property="og:description" content="25 years of NASA FIRMS hotspots, handed from MODIS to VIIRS like a relay, in one unit. A burning calendar for any area on Earth.">
-<meta name="theme-color" content="#0b0b0a">
+<meta name="theme-color" content="#f4f2ec">
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%223%22%20fill%3D%22%230b0b0a%22%2F%3E%3Cpath%20d%3D%22M5.5%2022.5%20C%2010%2022.5%2C%2011%2012.5%2C%2016%2012.5%20S%2022%2021.5%2C%2026.5%209.5%22%20stroke%3D%22%23ecebe4%22%20stroke-width%3D%222.2%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%2F%3E%3Ccircle%20cx%3D%225.5%22%20cy%3D%2222.5%22%20r%3D%222.6%22%20fill%3D%22%23ff6a2b%22%2F%3E%3Ccircle%20cx%3D%2216%22%20cy%3D%2212.5%22%20r%3D%222.6%22%20fill%3D%22%23ecebe4%22%2F%3E%3Ccircle%20cx%3D%2226.5%22%20cy%3D%229.5%22%20r%3D%222.6%22%20fill%3D%22%23ecebe4%22%2F%3E%3C%2Fsvg%3E">
+<script>document.documentElement.dataset.theme = localStorage.getItem('fr-theme') || 'light';</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=Inter+Tight:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
@@ -18,7 +19,7 @@
 <body>
 <header class="hdr">
   <div class="hdr-l rise" style="--d:0">
-    <div class="madewith mono"><span>BUILT WITH CLAUDE (SI)</span><i>/</i><span>DATA · NASA FIRMS</span></div>
+    <div class="kickline">NASA FIRMS · MODIS + VIIRS · 2001–2026</div>
     <div class="brandrow">
       <a class="logo" href="./" aria-label="FireRelay home"><em>Fire</em>Relay</a>
       <span class="vrule" aria-hidden="true"></span>
@@ -34,6 +35,7 @@
       <a href="method.html">METHOD</a>
       <a href="method.html#data">DATA</a>
       <a href="https://github.com/su0as/firerelay" rel="noopener">SOURCE ↗</a>
+      <button class="themebtn" id="themeBtn" aria-label="Switch colour theme"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 1.8a6.2 6.2 0 0 1 0 12.4z" fill="currentColor"/></svg><span id="themeLbl">DARK</span></button>
     </nav>
   </div>
 </header>
@@ -73,7 +75,7 @@
     </div>
     <div class="howto rise" style="--d:6">
       <div class="kick mono">HOW TO READ</div>
-      <p>Each square on the map is a 0.25° cell, about 28 km. Brighter means more fires that month, counted in <em>NOAA-20 VIIRS</em> units. Months before Feb 2012 are estimated from MODIS and drawn hatched.</p>
+      <p>Each square on the map is a 0.25° cell, about 28 km. Stronger colour means more fires that month, counted in <em>NOAA-20 VIIRS</em> units. Months before Feb 2012 are estimated from MODIS and drawn hatched.</p>
       <p class="mono keys">SPACE PLAY · ← → MONTH</p>
     </div>
   </aside>
@@ -86,6 +88,7 @@
   </section>
 
   <aside class="panel" id="panel" aria-live="polite">
+    <div class="pcol">
     <div class="kick mono rise" style="--d:3"><span id="aoiKick">AREA</span><span id="aoiBuilt"></span></div>
     <h1 id="aoiName" class="rise" style="--d:3">Loading…</h1>
     <p class="deck rise" style="--d:4" id="aoiDeck"></p>
@@ -95,6 +98,8 @@
       <div class="narr-t mono" id="narrT"></div>
       <p class="narr" id="narr"></p>
     </div>
+    </div>
+    <div class="pcol">
     <div class="ctlbar mono rise" style="--d:6">
       <div class="seg" role="radiogroup" aria-label="Colour by">
         <button role="radio" aria-checked="true" data-view="count">HOTSPOTS</button>
@@ -117,6 +122,7 @@
       <button id="share" title="Copy a link to this view">↗ LINK</button>
     </div>
     <p class="fine">Hotspots, nominal and high confidence, vegetation fires only, in NOAA-20 VIIRS 375 m units, summed over 0.25° cells weighted by the share inside your area. Estimated months carry an 80% range from hold-out validation. <a href="method.html">How it works and how well it works →</a></p>
+    </div>
   </aside>
 </main>
 
