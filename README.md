@@ -36,6 +36,9 @@ All ratios are ratio-of-sums estimators. They are shrunk toward their parent (0.
 The test fits ratios on 2012–2016 and predicts S-NPP counts for 2017–2019 from MODIS only.
 
 - **Median absolute error of 1° monthly totals:** about 34% for FireRelay, versus 43% for one global ratio and 87% for raw MODIS.
+- **Same test, yearly totals:** 14% for 1° blocks, 10% for 5° tiles and 12% for the 12 named areas in the app (raw MODIS: about 88%). Whole-globe yearly totals: within 1%.
+- **80% ranges:** cover 76% of 1° monthly hold-out totals and 80% of named-area totals in stable years, and about 72% under MODIS orbit drift (2020–2025). They are slightly too narrow.
+- **Weakest region:** Riau is overestimated in every hold-out year (+21% to +134%), so MODIS-era peatland estimates are the least certain part of the record.
 - **Log correlation at 5° monthly:** 0.92.
 - **Peak burning month:** same as VIIRS in about 77% of region-years.
 - **Noise floor:** the two VIIRS instruments disagree by about 17% at the same scale.
@@ -54,6 +57,8 @@ MAP_KEY=... pipeline/fetch_api.sh VIIRS_NOAA20_SP 2026-01-01 2026-07-31 | node p
 # 3. calibrate, validate, write tiles
 SEASONAL=1 LAMBDAS=30,100,300 LAST_DATE=2026-11-15 node --max-old-space-size=6000 pipeline/build.mjs ./agg,./agg2026 web
 node pipeline/build_presets.mjs web/data/geo/presets.json
+# 4. score the same hold-out tests at block, tile, named-area and global scales
+SEASONAL=1 node --max-old-space-size=6000 pipeline/validate_scales.mjs ./agg,./agg2026 web web/data/validation_scales.json
 node pipeline/serve.mjs web 8765
 ```
 
