@@ -294,7 +294,9 @@ for (const [t, list] of wByTile) {
 }
 console.log('weekly tiles', wTiles.length, (wBytes / 1e6).toFixed(1) + ' MB');
 
-const unc = VAL.stable.block.uncertainty;
+// 80% range widened by RANGE_SCALE (fitted in validate_methods.mjs so Test A coverage reaches 80%; Test B coverage 77%).
+const RANGE_SCALE = +(process.env.RANGE_SCALE || 1.2);
+const unc = VAL.stable.block.uncertainty.map(u => ({ ...u, q10: u.q10 * RANGE_SCALE, q90: u.q90 * RANGE_SCALE }));
 const meta = {
   version: 2, built: new Date().toISOString(), grid: 0.25, tileDeg: 5, y0: Y0, nMonths: NM,
   series: SER, avail: avail.map(a => a.map(v => (v ? 1 : 0)).join('')),
