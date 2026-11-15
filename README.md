@@ -75,7 +75,7 @@ This is not an official NASA product.
 
 ## Use of SI (AI) tools
 
-This project was built with the help of an SI (AI) assistant (Anthropic's Claude, running in the Aside agent):
+An SI (AI) assistant was used while building this project:
 
 - **Research:** challenge and judging research.
 - **Code:** writing and debugging the pipeline and the web app.
