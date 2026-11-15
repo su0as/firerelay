@@ -248,7 +248,7 @@ async function renderNow() {
     html += `<span>LATEST WEEK · ${f(d0)}–${f(d1)} · <b>${fmt(v)}</b> HOTSPOTS${isFinite(r) ? ` · <b class="${r >= 1.5 ? 'hot' : ''}">${r >= 10 ? Math.round(r) : r.toFixed(1)}×</b> A TYPICAL WEEK` : ''}</span>`; }
   const pi = PRESETS.findIndex(p => p.id === state.aoi.id); const haze = pi >= 0 && /haze/i.test(PRESETS[pi].group);
   if (haze) { try { if (!PM) PM = await (await fetch('https://api.data.gov.sg/v1/environment/pm25')).json(); const it = PM.items[0], rd = it.readings.pm25_one_hourly, mx = Math.max(...Object.values(rd)); const band = mx <= 55 ? ['NORMAL', 'ok'] : mx <= 150 ? ['ELEVATED', 'hot'] : mx <= 250 ? ['HIGH', 'hot'] : ['VERY HIGH', 'hot'];
-      html += `<span><i class="live"></i>SINGAPORE PM2.5 NOW · <b>${mx}</b> <span style="text-transform:none">µg/m³</span> MAX · <b class="${band[1]}">${band[0]}</b> · NEA ${it.timestamp.slice(11, 16)}</span>`; } catch (e) {} }
+      html += `<span><i class="live"></i>SINGAPORE PM2.5 NOW · <b>${mx}</b> <span style="text-transform:none">µg/m³</span> MAX · <b class="${band[1]}">${band[0]}</b> · NEA LATEST HOURLY</span>`; } catch (e) {} }
   el.innerHTML = html;
 }
 async function renderChecks(seq) {
@@ -485,10 +485,10 @@ $('#play').onclick = () => state.playing ? stop() : play();
 let introOn = false;
 async function intro() {
   const sp = state.speed; introOn = true; state.speed = 30; setMonth(0, { force: true });
-  const cancel = () => { if (introOn) { introOn = false; stop(); state.speed = sp; } };
+  const cancel = () => { if (introOn) { introOn = false; stop(); state.speed = sp; setTimeout(maybeTour, 400); } };
   ['pointerdown', 'keydown', 'wheel'].forEach(ev => window.addEventListener(ev, cancel, { once: true, capture: true }));
   await new Promise(r => setTimeout(r, 700)); if (!introOn) return;
-  play(LASTFULL); const iv = setInterval(() => { if (!state.playing) { introOn = false; state.speed = sp; clearInterval(iv); } }, 200);
+  play(LASTFULL); const iv = setInterval(() => { if (!state.playing) { const was = introOn; introOn = false; state.speed = sp; clearInterval(iv); if (was) setTimeout(maybeTour, 500); } }, 200);
 }
 $$('.speed button').forEach(b => b.onclick = () => { state.speed = +b.dataset.sp; $$('.speed button').forEach(x => x.setAttribute('aria-checked', String(x === b))); });
 $('#cmpBtn').onclick = () => { state.cmp = !state.cmp; $('#cmpBtn').setAttribute('aria-pressed', String(state.cmp)); const p = $('#tlCmp'); if (p) p.setAttribute('visibility', state.cmp ? 'visible' : 'hidden'); };
@@ -497,6 +497,57 @@ document.addEventListener('keydown', e => {
   if (e.code === 'Space') { e.preventDefault(); state.playing ? stop() : play(); }
   else if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && !e.target.closest('svg')) { e.preventDefault(); stop(); setMonth(state.m + (e.key === 'ArrowRight' ? 1 : -1)); }
 });
+
+// ---------------- walkthrough ----------------
+const TOUR = [
+  { sel: '.rail', k: 'STEP 1 / 6 · PICK A PLACE', t: 'Start anywhere on Earth', p: 'Choose a place from the list, starting with the Singapore haze sources, or use DRAW and COORDS to make your own area.' },
+  { sel: '#map', k: 'STEP 2 / 6 · THE MAP', t: 'Every square is a 28 km cell', p: 'Darker squares had more fire that month, counted in one unit: NOAA-20 VIIRS hotspots. Hover a square for the raw sensor counts.' },
+  { sel: '.tl', k: 'STEP 3 / 6 · THE RELAY', t: 'Press play: 2001 to today', p: 'The diamonds mark the satellite handovers in 2012 and 2018. Turn on NAIVE STITCH to see the false jump that FireRelay removes.' },
+  { sel: '#calendar', k: 'STEP 4 / 6 · BURNING CALENDAR', t: '26 years, one row per year', p: 'Hatched months are estimated from MODIS. Switch to VS TYPICAL to see unusual months, or WEEK for weekly detail. Click any cell to jump there.' },
+  { sel: '#checks', k: 'STEP 5 / 6 · CAN YOU TRUST IT?', t: 'The error, measured for your area', p: 'Tested on years the model never saw. You also get the naive-stitch vs FireRelay trend and an outlook built from history.' },
+  { sel: '#liveBtn', k: 'STEP 6 / 6 · LIVE', t: 'What is burning right now', p: 'LIVE jumps to the newest data: this week against a typical week, and Singapore\'s PM2.5 reading from NEA, updated hourly.' },
+];
+let tourI = -1;
+function maybeTour() { if (localStorage.getItem('fr-tour') || /nointro/.test(location.search)) return; startTour(); }
+function startTour() { stop(); tourI = 0; $('#tour').hidden = false; const ar = $('#tourArrow'); if (ar.parentElement !== $('#tour')) $('#tour').appendChild(ar); showStep(); }
+function endTour() { $('#tour').hidden = true; tourI = -1; localStorage.setItem('fr-tour', '1'); }
+function showStep() {
+  const st = TOUR[tourI]; let el = $(st.sel); if (!el || !el.getBoundingClientRect().width) { if (tourI < TOUR.length - 1) { tourI++; return showStep(); } return endTour(); }
+  el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); if (st.sel === '#calendar' || st.sel === '#checks') el.scrollIntoView({ block: 'center' });
+  setTimeout(() => {
+    const vw = innerWidth, vh = innerHeight; let r = el.getBoundingClientRect(); const R = { l: Math.max(6, r.left), t: Math.max(6, r.top), r: Math.min(vw - 6, r.right), b: Math.min(vh - 6, r.bottom) };
+    const sp = $('#tourSpot'); Object.assign(sp.style, { left: R.l - 4 + 'px', top: R.t - 4 + 'px', width: R.r - R.l + 8 + 'px', height: R.b - R.t + 8 + 'px' });
+    $('#tourK').textContent = st.k; $('#tourT').textContent = st.t; $('#tourP').textContent = st.p; $('#tourBack').style.visibility = tourI ? 'visible' : 'hidden'; $('#tourNext').textContent = tourI === TOUR.length - 1 ? 'DONE' : 'NEXT →';
+    const card = $('#tourCard'), cw = card.offsetWidth, ch = card.offsetHeight, G = 78; let x, y, side;
+    if (R.r + G + cw < vw) { side = 'right'; x = R.r + G; y = clamp((R.t + R.b) / 2 - ch / 2, 10, vh - ch - 10); }
+    else if (R.l - G - cw > 0) { side = 'left'; x = R.l - G - cw; y = clamp((R.t + R.b) / 2 - ch / 2, 10, vh - ch - 10); }
+    else if (R.b + G + ch < vh) { side = 'below'; y = R.b + G; x = clamp((R.l + R.r) / 2 - cw / 2, 10, vw - cw - 10); }
+    else if (R.t - G - ch > 0) { side = 'above'; y = R.t - G - ch; x = clamp((R.l + R.r) / 2 - cw / 2, 10, vw - cw - 10); }
+    else { side = 'inside'; x = clamp((R.l + R.r) / 2 - cw / 2, 10, vw - cw - 10); y = clamp(R.b - ch - 20, 10, vh - ch - 10); }
+    card.style.left = x + 'px'; card.style.top = y + 'px';
+    const ar = $('#tourArrow'); const A = side === 'right' ? [x, y + ch / 2] : side === 'left' ? [x + cw, y + ch / 2] : side === 'below' ? [x + cw / 2, y] : side === 'above' ? [x + cw / 2, y + ch] : [x + cw / 2, y];
+    const B = [clamp(A[0], R.l + 12, R.r - 12), clamp(A[1], R.t + 12, R.b - 12)]; const dx = B[0] - A[0], dy = B[1] - A[1];
+    ar.style.display = side === 'inside' || Math.hypot(dx, dy) < 30 ? 'none' : 'block';
+    const mx = A[0] + dx * .5, my = A[1] + dy * .5, ang = Math.atan2(dy, dx) * 180 / Math.PI + 45;
+    ar.style.left = mx - 29 + 'px'; ar.style.top = my - 29 + 'px'; ar.style.transform = `rotate(${ang}deg)`;
+    const p = ar.querySelector('path'); p.style.animation = 'none'; void p.getBoundingClientRect(); p.style.animation = '';
+  }, 260);
+}
+$('#tourNext').onclick = () => { if (tourI >= TOUR.length - 1) return endTour(); tourI++; showStep(); };
+$('#tourBack').onclick = () => { if (tourI > 0) { tourI--; showStep(); } };
+$('#tourSkip').onclick = endTour;
+$('#tourBtn').onclick = startTour;
+document.addEventListener('keydown', e => { if (tourI < 0) return; if (e.key === 'Escape') endTour(); else if (e.key === 'ArrowRight' || e.key === 'Enter') { e.stopPropagation(); $('#tourNext').click(); } else if (e.key === 'ArrowLeft') { e.stopPropagation(); $('#tourBack').click(); } }, true);
+addEventListener('resize', () => { if (tourI >= 0) showStep(); });
+// ---------------- live ----------------
+$('#liveBtn').onclick = async () => {
+  if (tourI >= 0) endTour(); stop(); setMonth(ERA.last, { force: true }); PM = null; await renderNow();
+  const n = $('#nowStrip'); n.scrollIntoView({ block: 'center', behavior: 'smooth' }); n.classList.remove('flash'); void n.offsetWidth; n.classList.add('flash');
+  const [yy, mm] = ym(ERA.last); const t = $('#liveToast'); const r = $('#liveBtn').getBoundingClientRect();
+  t.innerHTML = `<b>● LIVE</b> · ${MON[mm].toUpperCase()} ${yy} SO FAR, OBSERVED BY NOAA-20 · DATA TO ${(() => { const d = new Date((META.lastDate || '2026-11-15') + 'T00:00:00Z'); return d.getUTCDate() + ' ' + MON[d.getUTCMonth()].toUpperCase() + ' ' + d.getUTCFullYear(); })()}<br>${n.innerHTML.replace(/<\/span><span>/g, '</span><br><span>')}`;
+  t.hidden = false; t.style.opacity = 1; t.style.top = r.bottom + 10 + 'px'; t.style.left = Math.max(10, Math.min(innerWidth - 390, r.right - 380)) + 'px';
+  clearTimeout(t._h); t._h = setTimeout(() => { t.style.opacity = 0; setTimeout(() => t.hidden = true, 300); }, 6500);
+};
 
 // ---------------- downloads & links ----------------
 function download(name, text, type) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500); }
@@ -554,7 +605,7 @@ let rz; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTime
 window.addEventListener('hashchange', () => { const a = readHash(); if (a && (!state.aoi || JSON.stringify(a.geometry) !== JSON.stringify(state.aoi.geometry))) setAOI(a, { push: false }); else if (state.series) renderCalendar(); });
 setTimeout(() => map.invalidateSize(), 50);
 const fromHash = readHash();
-setAOI(fromHash || presetAOI(PRESETS.find(p => p.id === 'central-kalimantan') || PRESETS[0]), { push: !!fromHash }).then(() => { if (!fromHash && !/nointro/.test(location.search)) setTimeout(intro, 1400); });
+setAOI(fromHash || presetAOI(PRESETS.find(p => p.id === 'central-kalimantan') || PRESETS[0]), { push: !!fromHash }).then(() => { if (!fromHash && !/nointro/.test(location.search)) setTimeout(intro, 1400); else if (/tour=1/.test(location.search)) setTimeout(() => startTour(), 1200); });
 function syncThemeBtn() { const t = theme(); $('#themeLbl').textContent = t === 'dark' ? 'LIGHT' : 'DARK'; document.querySelector('meta[name=theme-color]').setAttribute('content', t === 'dark' ? '#0b0b0a' : '#f4f2ec'); }
 syncThemeBtn();
 $('#themeBtn').onclick = () => {

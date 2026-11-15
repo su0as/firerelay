@@ -35,7 +35,7 @@
       <a href="method.html">METHOD</a>
       <a href="method.html#data">DATA</a>
       <a href="https://github.com/su0as/firerelay" rel="noopener">SOURCE ↗</a>
-      <button class="themebtn" id="themeBtn" aria-label="Switch colour theme"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 1.8a6.2 6.2 0 0 1 0 12.4z" fill="currentColor"/></svg><span id="themeLbl">DARK</span></button>
+      <button class="livebtn" id="liveBtn" title="Jump to the latest data: this week and Singapore's air right now"><i class="live"></i>LIVE</button><button class="tourbtn" id="tourBtn" title="Show the walkthrough">TOUR</button><button class="themebtn" id="themeBtn" aria-label="Switch colour theme"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 1.8a6.2 6.2 0 0 1 0 12.4z" fill="currentColor"/></svg><span id="themeLbl">DARK</span></button>
     </nav>
   </div>
 </header>
@@ -148,5 +148,7 @@
 <div id="tip" class="tip" role="tooltip" hidden></div>
 <script src="vendor/leaflet.js"></script>
 <script type="module" src="app.js"></script>
+<div id="tour" class="tour" hidden><div class="tour-spot" id="tourSpot"></div><div class="tour-card" id="tourCard" role="dialog" aria-live="polite"><svg class="tour-arrow" id="tourArrow" viewBox="0 0 60 60" aria-hidden="true"><path d="M8 52 C 20 30, 34 18, 52 8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><path d="M40 6 L53 7 L50 20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg><div class="tour-k mono" id="tourK"></div><div class="tour-t" id="tourT"></div><p class="tour-p" id="tourP"></p><div class="tour-b mono"><button id="tourSkip">SKIP</button><span><button id="tourBack">BACK</button><button id="tourNext" class="pri">NEXT →</button></span></div></div></div>
+<div id="liveToast" class="live-toast mono" hidden></div>
 </body>
 </html>
