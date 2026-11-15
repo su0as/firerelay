@@ -240,6 +240,17 @@ async function loadHold() {
 }
 const medianOf = xs => { if (!xs.length) return NaN; const s = [...xs].sort((a, b) => a - b), h = s.length >> 1; return s.length % 2 ? s[h] : (s[h - 1] + s[h]) / 2; };
 const pctS = v => (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(Math.round(100 * v)) + '%';
+let PM = null;
+async function renderNow() {
+  const el = $('#nowStrip'); let html = '';
+  const W8 = state.weekly; if (W8 && META.weekly) { const PER = 53, k = META.weekly.lastWeek - 1, y = Math.floor(k / PER), w = k % PER; const xs = []; for (let yy = 0; Y0 + yy <= BASE_Y1; yy++) xs.push(W8[yy * PER + w]); xs.sort((p, q) => p - q); const md = xs[xs.length >> 1];
+    const d0 = new Date(Date.UTC(Y0 + y, 0, 1 + 7 * w)), d1 = new Date(Date.UTC(Y0 + y, 0, 7 + 7 * w)); const f = d => d.getUTCDate() + ' ' + MON[d.getUTCMonth()].toUpperCase(); const v = W8[k], r = md > 0 ? v / md : NaN;
+    html += `<span>LATEST WEEK · ${f(d0)}–${f(d1)} · <b>${fmt(v)}</b> HOTSPOTS${isFinite(r) ? ` · <b class="${r >= 1.5 ? 'hot' : ''}">${r >= 10 ? Math.round(r) : r.toFixed(1)}×</b> A TYPICAL WEEK` : ''}</span>`; }
+  const pi = PRESETS.findIndex(p => p.id === state.aoi.id); const haze = pi >= 0 && /haze/i.test(PRESETS[pi].group);
+  if (haze) { try { if (!PM) PM = await (await fetch('https://api.data.gov.sg/v1/environment/pm25')).json(); const it = PM.items[0], rd = it.readings.pm25_one_hourly, mx = Math.max(...Object.values(rd)); const band = mx <= 55 ? ['NORMAL', 'ok'] : mx <= 150 ? ['ELEVATED', 'hot'] : mx <= 250 ? ['HIGH', 'hot'] : ['VERY HIGH', 'hot'];
+      html += `<span><i class="live"></i>SINGAPORE PM2.5 NOW · <b>${mx}</b> <span style="text-transform:none">µg/m³</span> MAX · <b class="${band[1]}">${band[0]}</b> · NEA ${it.timestamp.slice(11, 16)}</span>`; } catch (e) {} }
+  el.innerHTML = html;
+}
 async function renderChecks(seq) {
   const s = state.series; if (!s) return;
   const yr = (arr, y0, y1) => { let t = 0, n = 0; for (let y = y0; y <= y1; y++) { let a = 0; for (let j = 0; j < 12; j++) { const m = (y - Y0) * 12 + j; const v = arr(m); a += isNaN(v) ? 0 : v; } t += a; n++; } return t / n; };
@@ -250,6 +261,7 @@ async function renderChecks(seq) {
   const nxt = [1, 2, 3].map(k => (LASTFULL + k) % 12); const tot = nxt.reduce((a, j) => a + (s.med[j] || 0), 0), yrTot = s.med.reduce((a, v) => a + (v || 0), 0);
   const MN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   $('#ckOut').textContent = `≈ ${fmt(tot)}`; $('#ckOutD').textContent = `Typical ${MN[nxt[0]]}–${MN[nxt[2]]} total, ${yrTot ? Math.round(100 * tot / yrTot) : 0}% of a usual year. History, not a forecast.`;
+  renderNow();
   $('#ckErr').textContent = '…'; $('#ckErrD').textContent = 'Loading the hold-out test…';
   const H = await loadHold(); if (seq !== aoiSeq) return;
   const bw = new Map(); for (const [c, w] of state.cells) { const r = Math.floor(c / 1440), cc = c % 1440; const b = Math.floor(r / 4) * 360 + Math.floor(cc / 4); bw.set(b, (bw.get(b) || 0) + w / 16); }

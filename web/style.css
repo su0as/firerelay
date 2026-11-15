@@ -305,3 +305,7 @@ body.doc{display:block;height:auto;overflow:auto}
 .chk .cd{font-family:var(--serif);font-style:italic;font-size:12.5px;line-height:1.35;color:var(--ink2);margin-top:5px}
 @media (max-width:420px){.checks{grid-template-columns:1fr}.chk{border-right:0;border-bottom:1px solid var(--rule);padding-left:0!important}}
 .chk .cv{font-size:clamp(15px,1.3vw,21px);white-space:normal;overflow-wrap:anywhere}
+.now{display:flex;flex-wrap:wrap;gap:6px 18px;margin:14px 0 0;font-size:10px;letter-spacing:.12em;color:var(--ink3);text-transform:uppercase}
+.now span b{color:var(--ink);font-weight:500}.now span .hot{color:var(--ember)}.now span .ok{color:var(--moss)}
+.now i.live{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--moss);margin-right:6px;vertical-align:1px;animation:pulseLive 1.6s infinite}
+@keyframes pulseLive{50%{opacity:.25}}
