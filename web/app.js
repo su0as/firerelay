@@ -226,8 +226,42 @@ async function setAOI(aoi, { fit = true, push = true } = {}) {
   $('#aoiMeta').textContent = `≈ ${fmt(area)} KM²  ·  ${weights.size.toLocaleString()} CELLS  ·  2001–${ym(ERA.last)[0]}`;
   renderMetrics(); renderCalendar(); buildTimeline(); renderMapRamp();
   setMonth(state.m, { force: true });
+  renderChecks(seq);
   if (!$('#tableWrap').hidden) renderTable();
   if (push) writeHash();
+}
+
+// ---------------- checks: measured hold-out error, naive stitch, outlook ----------------
+let HOLD = null;
+async function loadHold() {
+  if (HOLD) return HOLD;
+  HOLD = (async () => { const buf = await gunzipIf(await (await fetch('data/holdout_blocks.bin')).arrayBuffer()); const u = new Uint32Array(buf instanceof ArrayBuffer ? buf : buf.buffer); const map = new Map(); for (let i = 0; i < u.length; i += 121) map.set(u[i], u.subarray(i + 1, i + 121)); return map; })();
+  return HOLD;
+}
+const medianOf = xs => { if (!xs.length) return NaN; const s = [...xs].sort((a, b) => a - b), h = s.length >> 1; return s.length % 2 ? s[h] : (s[h - 1] + s[h]) / 2; };
+const pctS = v => (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(Math.round(100 * v)) + '%';
+async function renderChecks(seq) {
+  const s = state.series; if (!s) return;
+  const yr = (arr, y0, y1) => { let t = 0, n = 0; for (let y = y0; y <= y1; y++) { let a = 0; for (let j = 0; j < 12; j++) { const m = (y - Y0) * 12 + j; const v = arr(m); a += isNaN(v) ? 0 : v; } t += a; n++; } return t / n; };
+  const raw = m => m >= ERA.n20Start && AV[3][m] ? s.N2[m] : m >= ERA.snppStart && AV[2][m] ? s.SN[m] : ((AV[0][m] ? s.T[m] : 0) + (AV[1][m] ? s.A[m] : 0)) / Math.max(1, (AV[0][m] ? 1 : 0) + (AV[1][m] ? 1 : 0));
+  const nv = yr(raw, 2013, 2017) / yr(raw, 2006, 2010) - 1, hv = yr(m => s.H[m], 2013, 2017) / yr(m => s.H[m], 2006, 2010) - 1;
+  if (isFinite(nv) && isFinite(hv)) { $('#ckNaive').innerHTML = `${pctS(nv)} <span style="color:var(--ink4)">→</span> <em>${pctS(hv)}</em>`; $('#ckNaiveD').textContent = `Change from 2006–10 to 2013–17. A raw stitch says ${pctS(nv)}; harmonized, it is ${pctS(hv)}.`; }
+  else { $('#ckNaive').textContent = '–'; $('#ckNaiveD').textContent = 'Too few fires here to compare.'; }
+  const nxt = [1, 2, 3].map(k => (LASTFULL + k) % 12); const tot = nxt.reduce((a, j) => a + (s.med[j] || 0), 0), yrTot = s.med.reduce((a, v) => a + (v || 0), 0);
+  const MN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  $('#ckOut').textContent = `≈ ${fmt(tot)}`; $('#ckOutD').textContent = `Typical ${MN[nxt[0]]}–${MN[nxt[2]]} total, ${yrTot ? Math.round(100 * tot / yrTot) : 0}% of a usual year. History, not a forecast.`;
+  $('#ckErr').textContent = '…'; $('#ckErrD').textContent = 'Loading the hold-out test…';
+  const H = await loadHold(); if (seq !== aoiSeq) return;
+  const bw = new Map(); for (const [c, w] of state.cells) { const r = Math.floor(c / 1440), cc = c % 1440; const b = Math.floor(r / 4) * 360 + Math.floor(cc / 4); bw.set(b, (bw.get(b) || 0) + w / 16); }
+  const o = new Float64Array(36), p = new Float64Array(36), rw = new Float64Array(36), oB = new Float64Array(6), pB = new Float64Array(6);
+  for (const [b, w] of bw) { const v = H.get(b); if (!v) continue; for (let i = 0; i < 36; i++) { o[i] += w * v[i]; p[i] += w * v[36 + i]; rw[i] += w * v[72 + i]; } for (let y = 0; y < 6; y++) { oB[y] += w * v[108 + y]; pB[y] += w * v[114 + y]; } }
+  const em = [], er = []; for (let i = 0; i < 36; i++) if (o[i] >= 10) { em.push(Math.abs(p[i] - o[i]) / (o[i] + 1)); er.push(Math.abs(rw[i] - o[i]) / (o[i] + 1)); }
+  const ey = []; for (let y = 0; y < 3; y++) { let so = 0, sp = 0; for (let j = 0; j < 12; j++) { so += o[y * 12 + j]; sp += p[y * 12 + j]; } if (so >= 100) ey.push(Math.abs(sp - so) / (so + 1)); }
+  for (let y = 0; y < 6; y++) if (oB[y] >= 100) ey.push(Math.abs(pB[y] - oB[y]) / (oB[y] + 1));
+  if (em.length < 6 && ey.length < 2) { $('#ckErr').textContent = 'n/a'; $('#ckErrD').textContent = 'Too few fires here in 2017–2025 to measure the error.'; return; }
+  const my = medianOf(ey), mm = medianOf(em), mr = medianOf(er);
+  $('#ckErr').innerHTML = isFinite(my) ? `${Math.round(100 * my)}% <span style="font-size:11px;color:var(--ink3)" class="mono">YEARLY</span>` : `${Math.round(100 * mm)}% <span style="font-size:11px;color:var(--ink3)" class="mono">MONTHLY</span>`;
+  $('#ckErrD').textContent = `Median error here on years the model never saw (2017–2025, ${ey.length} years)${isFinite(mm) ? `. Monthly: ${Math.round(100 * mm)}%, raw MODIS ${Math.round(100 * mr)}%` : ''}.`;
 }
 
 // ---------------- month cursor ----------------

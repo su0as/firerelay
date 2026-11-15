@@ -121,6 +121,11 @@
       <button id="dlGeo" title="Download the area as GeoJSON">↓ AREA</button>
       <button id="share" title="Copy a link to this view">↗ LINK</button>
     </div>
+    <div class="checks" id="checks" aria-live="polite">
+      <div class="chk"><div class="ck mono">MEASURED ERROR HERE</div><div class="cv" id="ckErr">–</div><div class="cd" id="ckErrD">Hold-out test on this area.</div></div>
+      <div class="chk"><div class="ck mono">NAIVE STITCH VS FIRERELAY</div><div class="cv" id="ckNaive">–</div><div class="cd" id="ckNaiveD"></div></div>
+      <div class="chk"><div class="ck mono">OUTLOOK FROM HISTORY</div><div class="cv" id="ckOut">–</div><div class="cd" id="ckOutD"></div></div>
+    </div>
     <p class="fine">Hotspots, nominal and high confidence, vegetation fires only, in NOAA-20 VIIRS 375 m units, summed over 0.25° cells weighted by the share inside your area. Estimated months carry an 80% range from hold-out validation. <a href="method.html">How it works and how well it works →</a></p>
     </div>
   </aside>

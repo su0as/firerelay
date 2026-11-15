@@ -295,3 +295,13 @@ body.doc{display:block;height:auto;overflow:auto}
 .tl-val{white-space:nowrap}.cmp{white-space:nowrap}
 @media (max-width:1100px), (max-height:600px){.tl{grid-template-columns:60px 1fr 270px}}
 @media (max-width:760px){.tl{grid-template-columns:52px 1fr}}
+
+.checks{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--line);border-bottom:1px solid var(--rule);margin:14px 0 4px}
+.chk{padding:10px 10px 10px 0;border-right:1px solid var(--rule);min-width:0}
+.chk+.chk{padding-left:12px}.chk:last-child{border-right:0}
+.chk .ck{font-size:9px;letter-spacing:.14em;color:var(--ink3)}
+.chk .cv{font-family:var(--sans);font-weight:300;font-size:22px;letter-spacing:-.01em;margin-top:6px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.chk .cv em{font-style:normal;color:var(--ember)}
+.chk .cd{font-family:var(--serif);font-style:italic;font-size:12.5px;line-height:1.35;color:var(--ink2);margin-top:5px}
+@media (max-width:420px){.checks{grid-template-columns:1fr}.chk{border-right:0;border-bottom:1px solid var(--rule);padding-left:0!important}}
+.chk .cv{font-size:clamp(15px,1.3vw,21px);white-space:normal;overflow-wrap:anywhere}
