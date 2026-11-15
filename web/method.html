@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FireRelay · method and validation</title>
+<meta name="description" content="How FireRelay harmonizes MODIS and VIIRS active-fire hotspots into one NOAA-20-equivalent record, and how well it works on held-out years.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%227%22%20fill%3D%22%23b10026%22%2F%3E%3Cpath%20d%3D%22M5.5%2022.5%20C%2010%2022.5%2C%2011%2012.5%2C%2016%2012.5%20S%2022%2021.5%2C%2026.5%209.5%22%20stroke%3D%22%23fff%22%20stroke-width%3D%222.6%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%2F%3E%3Ccircle%20cx%3D%225.5%22%20cy%3D%2222.5%22%20r%3D%222.6%22%20fill%3D%22%23ffd28a%22%2F%3E%3Ccircle%20cx%3D%2216%22%20cy%3D%2212.5%22%20r%3D%222.6%22%20fill%3D%22%23fff%22%2F%3E%3Ccircle%20cx%3D%2226.5%22%20cy%3D%229.5%22%20r%3D%222.6%22%20fill%3D%22%23fff%22%2F%3E%3C%2Fsvg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="./" aria-label="FireRelay home">
+    <svg viewBox="0 0 32 32" width="30" height="30" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#b10026"/><path d="M5.5 22.5 C 10 22.5, 11 12.5, 16 12.5 S 22 21.5, 26.5 9.5" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round"/><circle cx="5.5" cy="22.5" r="2.6" fill="#ffd28a"/><circle cx="16" cy="12.5" r="2.6" fill="#fff"/><circle cx="26.5" cy="9.5" r="2.6" fill="#fff"/></svg>
+    <span><b>FireRelay</b><small>one fire record, MODIS to VIIRS</small></span>
+  </a>
+  <nav aria-label="Main"><a href="./">Calendar</a><a href="method.html" aria-current="page">Method &amp; validation</a><a href="#data">Data &amp; credits</a></nav>
+  <span class="fresh" id="fresh">NASA FIRMS data</span>
+</header>
+
+<div class="doc">
+<section class="panel">
+  <h1>How FireRelay turns two fire records into one</h1>
+  <p>For 25 years, satellites have counted fire hotspots, places where a pixel is hotter than its surroundings. The record is split across two sensor families that cannot be compared directly. <b>MODIS</b> (Terra since 2000, Aqua since 2002) sees 1 km pixels. <b>VIIRS</b> (S-NPP since 2012, NOAA-20 since 2018, NOAA-21 since 2023) sees 375 m pixels and finds many more, smaller fires. MODIS is reaching the end of its life, and S-NPP stopped delivering data on 2 November 2026. A fire manager who stacks the two records sees a false jump in 2012. Anyone who uses VIIRS alone loses 11 years of history.</p>
+  <p>FireRelay calibrates every month since January 2001 to one unit: <b>NOAA-20 VIIRS 375 m equivalent hotspots</b>. It then builds a burning-activity calendar for any area on Earth from that one consistent record.</p>
+  <div class="kpis" id="kpis"></div>
+</section>
+
+<section class="panel">
+  <h2>1. Why NOAA-20 units</h2>
+  <p>The challenge allows a MODIS-equivalent or a VIIRS-equivalent record if the choice is justified. We chose NOAA-20 for three reasons:</p>
+  <ul>
+    <li><b>The future is VIIRS.</b> NOAA-20 and NOAA-21 carry the record forward, and FIRMS asked users to move to them when S-NPP ended. In NOAA-20 units every new month is an observation, so no model is needed. Only the frozen MODIS archive is modelled, once.</li>
+    <li><b>Operational agencies already count in it.</b> For example, the ASEAN Specialised Meteorological Centre in Singapore reports regional hotspot counts from NOAA-20. Its monthly reviews compare only the last five years, because NOAA-20 is the only sensor it uses. FireRelay puts 2001 to 2011 into the same units, so those comparisons can reach back 25 years.</li>
+    <li><b>It keeps the extra detail.</b> A MODIS-equivalent record would throw away VIIRS's sensitivity to small agricultural and peat fires for every future month.</li>
+  </ul>
+</section>
+
+<section class="panel">
+  <h2>2. Data and identical filters</h2>
+  <p>All counts come from <b>NASA FIRMS</b>. The yearly archives are the standard, science-quality product: MODIS Collection 6.1 from November 2000, S-NPP VIIRS 375 m from January 2012, and NOAA-20 VIIRS 375 m from April 2018, all through December 2025. Months in 2026 come from the FIRMS area API, using standard data where it exists and near-real-time data for the latest months. <span id="rowsNote"></span></p>
+  <p>Every sensor passes the same filters before counting. We keep detections of <b>type 0</b> (presumed vegetation fire), which drops volcanoes, static industrial heat sources and offshore flares. We also keep only <b>nominal and high confidence</b> detections (MODIS 30% or more, VIIRS "n" or "h"). Detections are counted on a <b>0.25° grid by calendar month</b> and on a <b>1° grid by week</b>. Terra and Aqua are kept separate because they pass at different times of day (about 10:30 and 13:30 local time), and fires follow a daily cycle.</p>
+</section>
+
+<section class="panel">
+  <h2>3. The calibration chain: a relay</h2>
+  <p>Like runners in a relay, each satellite hands the record to the next one while both are flying. FireRelay uses three hand-overs, each fitted where both sensors overlap:</p>
+  <ol>
+    <li><b>NOAA-20 era</b> (April 2018 onward): observed NOAA-20 counts, used as they are.</li>
+    <li><b>S-NPP era</b> (February 2012 to March 2018): <code>H = rS(cell) × S-NPP</code>. Here rS is the NOAA-20 to S-NPP ratio over their overlap, April 2018 to December 2025. Its global value is <span id="kSN"></span>, so the two VIIRS instruments agree closely.</li>
+    <li><b>MODIS era</b> (January 2001 to January 2012): <code>H = rS(cell) × average over available platforms of k_p(cell, calendar month) × MODIS_p</code>, where p is Terra or Aqua. This copes with the Terra-only months of 2001 and early 2002, and it keeps working if either platform stops.</li>
+  </ol>
+  <p>Each ratio <code>k</code> is a <b>ratio of sums</b>: S-NPP detections divided by MODIS detections over the calibration months. It is <b>shrunk toward its parent</b> in a chain: 0.25° cell, then 1° block for that calendar month, then 1° block for the year, then the 5° tile, then the globe. For a cell, <code>k = (ΣVIIRS + λ·k_parent) / (ΣMODIS + λ)</code>, with λ = <span id="lam"></span> MODIS detections, chosen on validation data. A cell with plenty of fires gets its own ratio. A cell with only a few fires borrows strength from its neighbours instead of producing a wild number. The ratios differ by calendar month because the size of fires, and so how many MODIS misses, changes through the season.</p>
+  <p>The MODIS ratios are calibrated on <b>February 2012 to December 2019</b>, when both MODIS platforms were still holding their designed orbits. Their overpass times drift in the 2020s, so later years would teach the model the wrong relationship for 2001 to 2011.</p>
+  <div class="chart" id="ratioChart"></div>
+  <p class="hint">Yearly worldwide detection ratios. S-NPP/Terra and S-NPP/Aqua show how many more hotspots VIIRS finds. NOAA-20/S-NPP stays close to 1.</p>
+</section>
+
+<section class="panel">
+  <h2>4. Does it work? Tested on years the model never saw</h2>
+  <p><b>Test A, stable orbits:</b> ratios fitted on 2012 to 2016 predict S-NPP counts for <b>2017 to 2019</b> from MODIS alone. <b>Test B, orbit drift:</b> ratios fitted on 2012 to 2019 predict <b>2020 to 2025</b>. Errors are measured on monthly totals for every unit with at least 10 observed detections, at three sizes: 0.25° cells, 1° blocks and 5° tiles.</p>
+  <div id="skill"></div>
+  <p>For scale, the two VIIRS instruments observing the same fires about 50 minutes apart disagree by a median of <b id="vvBlock"></b> at the 1° monthly scale. That is a rough floor for any harmonization. The MODIS-based estimate is about twice that floor, which is expected: MODIS sees 6 to 12 times fewer hotspots, so its counts are much noisier. The harmonized calendar picks the <b>same peak burning month</b> as VIIRS in <b id="peakPct"></b> of region-years.</p>
+  <p>These hold-out errors are also FireRelay's uncertainty model. Every MODIS-era month in the app has an 80% range taken from the error distribution for monthly totals of that size, shown as a hatched cell, a shaded band and the <code>lower80</code> and <code>upper80</code> columns in the CSV.</p>
+  <div class="chart" id="globalChart"></div>
+  <p class="hint">Worldwide hotspots per year. The raw sensors (thin lines) differ by up to a factor of 12. The harmonized record (thick red) continues smoothly through the 2012 and 2018 sensor changes.</p>
+</section>
+
+<section class="panel">
+  <h2>Spot check against FIRMS itself</h2>
+  <p>As an end-to-end check of the pipeline, including the near-real-time months, we counted NOAA-20 detections (nominal and high confidence) for October 2026 in a box over Central Kalimantan (111° to 115.9° E, 3.6° S to 0.9° N) directly from the FIRMS API: <b>79,630</b>. FireRelay reports <b>78,472</b> for the same box, 1.5% lower. That is the expected size of the static-source correction and the partial edge cells.</p>
+</section>
+
+<section class="panel">
+  <h2>5. Calendar design choices</h2>
+  <ul>
+    <li><b>Monthly by default; weekly as a deliberate option.</b> Monthly is the clearest step for spotting patterns. A weekly calendar is far busier: 53 weeks for each of 26 years. FireRelay makes it readable the way a GitHub contribution graph is: one thin row per year, colours relative to the selected area, and hatching for estimated weeks.</li>
+    <li><b>Compared with the place's own history.</b> For every month, the "vs typical month" view shows how many times the 2001 to 2025 median it is. Ranks and record markers show how unusual it is. Status cards answer the questions an emergency manager asks first: how the last full month compares, how the year to date compares, and when the burning season usually is.</li>
+    <li><b>Honest about provenance.</b> Estimated months are hatched, partial months are dashed, and every tooltip shows the raw Terra, Aqua, S-NPP and NOAA-20 counts behind the number.</li>
+    <li><b>Accessible.</b> Colour ramps are ColorBrewer schemes that are safe for colour-blind readers. A table view is available for screen readers, and the calendar can be navigated with the arrow keys.</li>
+    <li><b>Built to last.</b> The site is static files only: about 50 MB of compressed tiles, with no server or database to go down. Links are shareable, and the CSV records units, sources and uncertainty.</li>
+  </ul>
+</section>
+
+<section class="panel">
+  <h2>6. Limitations</h2>
+  <ul>
+    <li>Hotspots are detections, not fires. Clouds and thick smoke hide fires, and smoke is common during haze episodes, so counts are a lower bound. Counts are not burned area or emissions.</li>
+    <li>The MODIS-era estimate assumes that the 2012 to 2019 relationship between the sensors held in 2001 to 2011. Changes in fire size or land use can break that, which the uncertainty band only partly captures.</li>
+    <li>Areas are built from whole 0.25° cells (about 28 km), weighted by how much of each lies inside the area. Very small areas are noisy.</li>
+    <li>The latest months use near-real-time data, which FIRMS later replaces with standard data. Values may change slightly.</li>
+    <li>The tool is for seasonal and historical context, not for tactical, same-day fire response. Use FIRMS directly for that.</li>
+    <li>NOAA-20 is the single observed reference from April 2018. If it fails, NOAA-21 (in the same orbit since 2023) would need the same overlap cross-calibration that links S-NPP to NOAA-20. This is not implemented in this version.</li>
+  </ul>
+</section>
+
+<section class="panel" id="si">
+  <h2>Use of SI (AI) tools</h2>
+  <p>This project was built with the help of an SI (AI) assistant (Anthropic's Claude, running in the Aside agent):</p>
+  <ul>
+    <li><b>Research:</b> challenge and judging research.</li>
+    <li><b>Code:</b> writing and debugging the pipeline and web app.</li>
+    <li><b>Writing:</b> drafting this documentation.</li>
+    <li><b>Video:</b> composing the demo video, which is watermarked as SI-assisted.</li>
+  </ul>
+  <p>The numbers do not come from a model. Every number in the app is computed by the deterministic code in <code>pipeline/</code> from NASA FIRMS data, and the validation numbers come from held-out data. No generated imagery is used. All visuals are charts and maps drawn from the data. The FireRelay logo is a simple hand-specified vector shape.</p>
+</section>
+
+<section class="panel" id="data">
+  <h2>Data and credits</h2>
+  <ul>
+    <li><b>NASA FIRMS</b> active fire data. MODIS Collection 6.1 (MCD14ML, Terra and Aqua). VIIRS 375 m from S-NPP (VNP14IMG) and NOAA-20 (VJ114IMG), standard archive plus near-real-time for the latest months. NOAA-21 (VJ214IMG) is not yet used; cross-calibrating it to NOAA-20 is the planned backup in case NOAA-20 stops. We acknowledge the use of data from NASA's Fire Information for Resource Management System (FIRMS), part of NASA's Earth Science Data and Information System (ESDIS). Algorithms: Giglio, Schroeder and Justice (2016), <i>Remote Sensing of Environment</i> 178, 31–41; Schroeder et al. (2014), <i>Remote Sensing of Environment</i> 143, 85–96.</li>
+    <li><b>NASA GIBS</b> Blue Marble shaded relief basemap and reference layers.</li>
+    <li><b>Boundaries</b>: geoBoundaries gbOpen (Runfola et al. 2020). Licences vary by country (ODbL or CC BY) and are listed in <code>data/geo/presets.json</code>.</li>
+    <li><b>Map library</b>: Leaflet 1.9.4 (BSD 2-Clause).</li>
+    <li>Context: ASEAN Specialised Meteorological Centre monthly haze reviews; the CONAE hotspot catalogue (Argentina).</li>
+  </ul>
+  <p><b>Source code</b> (readable in the browser): <a href="source/README.md">README</a> · <a href="source/fetch_archive.sh.txt">fetch_archive.sh</a> · <a href="source/fetch_api.sh.txt">fetch_api.sh</a> · <a href="source/aggregate.mjs">aggregate.mjs</a> · <a href="source/build.mjs">build.mjs</a> · <a href="source/build_presets.mjs">build_presets.mjs</a>. <b>Demo:</b> <a href="demo/firerelay-demo.mp4">30-second video</a> · <a href="demo/firerelay-slides.pdf">7-slide deck (PDF)</a>.</p>
+  <p>The full pipeline is in <code>pipeline/</code>. It downloads the FIRMS archive, aggregates it, calibrates, validates and writes the tiles, so the whole site can be rebuilt with one command per step.</p>
+</section>
+</div>
+
+<script type="module">
+const V = await (await fetch('data/validation.json')).json();
+const M = await (await fetch('data/meta.json')).json();
+const pct = x => (100 * x).toFixed(0) + '%';
+const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+if (M.lastDate) { const d = new Date(M.lastDate + 'T00:00:00Z'); document.getElementById('fresh').textContent = `NASA FIRMS · data through ${d.getUTCDate()} ${MON[d.getUTCMonth()]} ${d.getUTCFullYear()}`; }
+const st = V.stable, dr = V.drift;
+document.getElementById('kpis').innerHTML = `
+ <div class="card"><div class="k">Median error, 1° monthly, held-out years</div><div class="v">${pct(st.block.medianAbsPctError.harmonized)}</div><div class="d">vs ${pct(st.block.medianAbsPctError.rawModis)} for raw MODIS and ${pct(st.block.medianAbsPctError.globalRatio)} for one global ratio</div></div>
+ <div class="card"><div class="k">Correlation (log counts), 5° monthly</div><div class="v">${st.tile.logCorr.toFixed(2)}</div><div class="d">overall bias ${(100 * st.tile.bias).toFixed(1)}%</div></div>
+ <div class="card"><div class="k">Same peak month as VIIRS</div><div class="v">${pct(st.block.peakMonthAgreement)}</div><div class="d">of ${st.block.peakN.toLocaleString()} 1° region-years</div></div>`;
+document.getElementById('kSN').textContent = V.snppToN20.kGlobal.toFixed(3);
+document.getElementById('lam').textContent = V.lambda;
+document.getElementById('vvBlock').textContent = pct(V.snppToN20.block.medianAbsPctError);
+document.getElementById('peakPct').textContent = pct(st.block.peakMonthAgreement);
+try { const s = await (await fetch('data/build_stats.json')).json(); document.getElementById('rowsNote').textContent = `In total ${(s.rows / 1e6).toFixed(0)} million detections were processed, of which ${(s.kept / 1e6).toFixed(0)} million passed the filters.`; } catch {}
+const row = (name, o) => `<tr><td>${name}</td><td>${o.n.toLocaleString()}</td><td class="good">${pct(o.medianAbsPctError.harmonized)}</td><td>${pct(o.medianAbsPctError.globalRatio)}</td><td>${pct(o.medianAbsPctError.rawModis)}</td><td>${(100 * o.bias).toFixed(1)}%</td><td>${o.logCorr.toFixed(2)}</td><td>${pct(o.peakMonthAgreement)}</td></tr>`;
+const tbl = (title, r) => `<h3>${title}</h3><table><thead><tr><th>Scale</th><th>Unit-months</th><th>FireRelay</th><th>One global ratio</th><th>Raw MODIS</th><th>Bias</th><th>Log corr.</th><th>Peak month</th></tr></thead><tbody>${row('0.25° cell', r.cell)}${row('1° block', r.block)}${row('5° tile', r.tile)}</tbody></table>`;
+document.getElementById('skill').innerHTML = tbl('Test A · train 2012–2016, test 2017–2019 (median absolute % error of monthly totals)', st) + tbl('Test B · train 2012–2019, test 2020–2025 (MODIS orbit drift)', dr) +
+  `<h3>λ (shrinkage) chosen on Test A</h3><table><thead><tr><th>λ</th><th>1° error</th><th>5° error</th></tr></thead><tbody>${Object.entries(V.lambdaSweep).map(([l, r]) => `<tr><td>${l}${+l === V.lambda ? ' (used)' : ''}</td><td>${pct(r.block.medianAbsPctError.harmonized)}</td><td>${pct(r.tile.medianAbsPctError.harmonized)}</td></tr>`).join('')}</tbody></table>`;
+// charts
+function lineChart(el, years, series, { log = false, h = 260, fmt = v => v } = {}) {
+  const W = 900, L = 64, R = 130, T = 14, B = 26; const vals = series.flatMap(s => s.v.filter(v => v != null && v > 0));
+  const mn = log ? Math.min(...vals) * 0.8 : 0, mx = Math.max(...vals) * 1.08;
+  const X = i => L + (W - L - R) * i / (years.length - 1), Y = v => log ? T + (h - T - B) * (1 - (Math.log(v) - Math.log(mn)) / (Math.log(mx) - Math.log(mn))) : T + (h - T - B) * (1 - v / mx);
+  let s = `<svg viewBox="0 0 ${W} ${h}" role="img">`;
+  const ticks = log ? [1e5, 3e5, 1e6, 3e6, 1e7, 3e7, 1e8].filter(t => t >= mn && t <= mx) : [0, .25, .5, .75, 1].map(f => f * mx);
+  for (const t of ticks) s += `<line x1="${L}" x2="${W - R}" y1="${Y(t)}" y2="${Y(t)}" stroke="#e3e7ec"/><text x="${L - 6}" y="${Y(t) + 4}" font-size="11" text-anchor="end" fill="#6b7685">${fmt(t)}</text>`;
+  years.forEach((y, i) => { if (y % 5 === 1 || i === years.length - 1) s += `<text x="${X(i)}" y="${h - 6}" font-size="11" text-anchor="middle" fill="#6b7685">${y}</text>`; });
+  for (const se of series) { let d = '', pen = false; se.v.forEach((v, i) => { if (v == null || !(v > 0)) { pen = false; return; } d += (pen ? 'L' : 'M') + X(i) + ' ' + Y(v); pen = true; }); s += `<path d="${d}" fill="none" stroke="${se.c}" stroke-width="${se.w || 1.6}" ${se.d ? `stroke-dasharray="${se.d}"` : ''}/>`; const li = se.v.map((v, i) => [v, i]).filter(([v]) => v != null && v > 0).pop(); if (li) s += `<text x="${X(li[1]) + 6}" y="${Y(li[0]) + 4}" font-size="11.5" fill="${se.c}">${se.n}</text>`; }
+  el.innerHTML = s + '</svg>';
+}
+const yrs = V.years; const big = v => v >= 1e6 ? (v / 1e6).toFixed(v >= 1e7 ? 0 : 1) + 'M' : (v / 1e3).toFixed(0) + 'k';
+lineChart(document.getElementById('globalChart'), yrs, [
+  { n: 'Terra MODIS', c: '#c58b00', v: V.yearly.terra, w: 1.3 }, { n: 'Aqua MODIS', c: '#6b7685', v: V.yearly.aqua, w: 1.3 },
+  { n: 'S-NPP VIIRS', c: '#0b5cad', v: V.yearly.snpp, w: 1.3 }, { n: 'NOAA-20 VIIRS', c: '#0f8a7e', v: V.yearly.noaa20, w: 1.3 },
+  { n: 'FireRelay', c: '#b10026', v: V.yearly.harmonized, w: 3.2 }], { log: true, fmt: big });
+lineChart(document.getElementById('ratioChart'), yrs, [
+  { n: 'S-NPP / Terra', c: '#c58b00', v: V.ratiosByYear.snppOverTerra }, { n: 'S-NPP / Aqua', c: '#6b7685', v: V.ratiosByYear.snppOverAqua }, { n: 'NOAA-20 / S-NPP', c: '#0f8a7e', v: V.ratiosByYear.n20OverSnpp, w: 2.4 }], { h: 220, fmt: v => v.toFixed(1) });
+</script>
+</body>
+</html>

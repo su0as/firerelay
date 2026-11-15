@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FireRelay · one fire record, MODIS to VIIRS</title>
+<meta name="description" content="FireRelay harmonizes NASA MODIS and VIIRS active-fire hotspots (FIRMS) into one continuous burning-activity calendar, 2001 to today, for any area on Earth.">
+<meta property="og:title" content="FireRelay · one fire record, MODIS to VIIRS">
+<meta property="og:description" content="A harmonized burning-activity calendar from 25 years of NASA FIRMS hotspots, for responders, scientists and land managers.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%227%22%20fill%3D%22%23b10026%22%2F%3E%3Cpath%20d%3D%22M5.5%2022.5%20C%2010%2022.5%2C%2011%2012.5%2C%2016%2012.5%20S%2022%2021.5%2C%2026.5%209.5%22%20stroke%3D%22%23fff%22%20stroke-width%3D%222.6%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%2F%3E%3Ccircle%20cx%3D%225.5%22%20cy%3D%2222.5%22%20r%3D%222.6%22%20fill%3D%22%23ffd28a%22%2F%3E%3Ccircle%20cx%3D%2216%22%20cy%3D%2212.5%22%20r%3D%222.6%22%20fill%3D%22%23fff%22%2F%3E%3Ccircle%20cx%3D%2226.5%22%20cy%3D%229.5%22%20r%3D%222.6%22%20fill%3D%22%23fff%22%2F%3E%3C%2Fsvg%3E">
+<link rel="stylesheet" href="vendor/leaflet.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="./" aria-label="FireRelay home">
+    <svg viewBox="0 0 32 32" width="30" height="30" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#b10026"/><path d="M5.5 22.5 C 10 22.5, 11 12.5, 16 12.5 S 22 21.5, 26.5 9.5" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round"/><circle cx="5.5" cy="22.5" r="2.6" fill="#ffd28a"/><circle cx="16" cy="12.5" r="2.6" fill="#fff"/><circle cx="26.5" cy="9.5" r="2.6" fill="#fff"/></svg>
+    <span><b>FireRelay</b><small>one fire record, MODIS to VIIRS</small></span>
+  </a>
+  <nav aria-label="Main">
+    <a href="./" aria-current="page">Calendar</a>
+    <a href="method.html">Method &amp; validation</a>
+    <a href="method.html#data">Data &amp; credits</a>
+  </nav>
+  <span class="fresh" id="fresh" title="Data source: NASA FIRMS standard (science-quality) archive plus near-real-time for the latest months">NASA FIRMS data</span>
+</header>
+
+<main class="app">
+  <section class="panel left" aria-label="Choose an area">
+    <div class="step"><span class="num">1</span> Choose an area</div>
+    <div class="tabs" role="tablist">
+      <button role="tab" aria-selected="true" data-tab="presets">Places</button>
+      <button role="tab" aria-selected="false" data-tab="draw">Draw</button>
+      <button role="tab" aria-selected="false" data-tab="coords">Coordinates</button>
+    </div>
+    <div class="tabpanel" id="tab-presets"><div id="presetList" class="presets"></div></div>
+    <div class="tabpanel" id="tab-draw" hidden>
+      <div class="row">
+        <button class="btn" id="drawRect">▭ Rectangle</button>
+        <button class="btn" id="drawPoly">⬠ Polygon</button>
+        <button class="btn ghost" id="drawClear">Clear</button>
+      </div>
+      <p class="hint" id="drawHint">Rectangle: press and drag on the map. Polygon: click to add corners, double-click to finish.</p>
+    </div>
+    <div class="tabpanel" id="tab-coords" hidden>
+      <form id="pointForm" class="coords">
+        <label>Latitude <input id="inLat" type="number" step="any" min="-90" max="90" placeholder="1.35" required></label>
+        <label>Longitude <input id="inLon" type="number" step="any" min="-180" max="180" placeholder="103.82" required></label>
+        <label>Radius km <input id="inRad" type="number" step="any" min="10" max="2000" value="100" required></label>
+        <button class="btn" type="submit">Use point + radius</button>
+      </form>
+      <form id="boxForm" class="coords">
+        <label>West <input id="inW" type="number" step="any" min="-180" max="180" placeholder="100" required></label>
+        <label>South <input id="inS" type="number" step="any" min="-90" max="90" placeholder="-4" required></label>
+        <label>East <input id="inE" type="number" step="any" min="-180" max="180" placeholder="106" required></label>
+        <label>North <input id="inN" type="number" step="any" min="-90" max="90" placeholder="2" required></label>
+        <button class="btn" type="submit">Use bounding box</button>
+      </form>
+    </div>
+    <div id="map" role="application" aria-label="Map. Draw or select an area of interest."></div>
+    <div class="maplegend" id="mapLegend">Outlined squares are the 0.25° cells counted for your area.</div>
+  </section>
+
+  <section class="panel right" aria-live="polite">
+    <div id="empty" class="empty">
+      <h1>When and where does it burn, compared with the last 25 years?</h1>
+      <p>Satellites have tracked fire hotspots since 2000, but the record is split: MODIS (2000 onward, 1 km pixels) and VIIRS (2012 onward, 375 m pixels) count fires differently, and MODIS is being retired. FireRelay calibrates the whole record to one unit, <b>NOAA-20 VIIRS-equivalent hotspots</b>, so every month from 2001 to today can be compared directly.</p>
+      <p>Pick a place on the left, draw an area, or type coordinates.</p>
+      <div class="quick" id="quickStart"></div>
+    </div>
+
+    <div id="result" hidden>
+      <div class="aoihead">
+        <div><div class="step"><span class="num">2</span> Burning activity</div><h2 id="aoiName">Area</h2><div class="sub" id="aoiSub"></div></div>
+        <div class="actions">
+          <button class="btn" id="dlCsv" title="Download the monthly calendar as CSV">⬇ CSV</button>
+          <button class="btn ghost" id="dlGeo" title="Download your area as GeoJSON">⬇ Area</button>
+          <button class="btn ghost" id="share" title="Copy a link to this view">🔗 Link</button>
+        </div>
+      </div>
+
+      <div class="cards" id="cards"></div>
+
+      <div class="viewbar">
+        <div class="seg" role="radiogroup" aria-label="Calendar colouring">
+          <button role="radio" aria-checked="true" data-view="count">Hotspots</button>
+          <button role="radio" aria-checked="false" data-view="anom">vs typical month</button>
+        </div>
+        <div class="seg" role="radiogroup" aria-label="Time step">
+          <button role="radio" aria-checked="true" data-step="month">Monthly</button>
+          <button role="radio" aria-checked="false" data-step="week">Weekly</button>
+        </div>
+        <button class="btn ghost small" id="tableBtn" aria-expanded="false">Show as table</button>
+      </div>
+
+      <figure class="calwrap">
+        <div id="calendar" class="calendar"></div>
+        <figcaption id="calLegend" class="legend"></figcaption>
+      </figure>
+      <div id="tableWrap" class="tablewrap" hidden></div>
+
+      <div class="step"><span class="num">3</span> The record, sensor by sensor</div>
+      <figure class="tswrap">
+        <div class="tstoggles" id="tsToggles"></div>
+        <div id="ts" class="ts"></div>
+        <figcaption class="hint" id="tsCaption"></figcaption>
+      </figure>
+
+      <p class="hint method-note">Counts are hotspots (nominal and high confidence, vegetation fires only) in NOAA-20 VIIRS 375 m units, summed over the outlined 0.25° cells, weighted by how much of each cell lies inside your area. Months before February 2012 are estimated from MODIS and carry an 80% uncertainty band. <a href="method.html">How it works and how well it works</a>.</p>
+    </div>
+  </section>
+</main>
+
+<div id="tip" class="tip" role="tooltip" hidden></div>
+<footer class="foot">
+  Data: NASA FIRMS (MODIS Collection 6.1 MCD14ML; VIIRS 375 m VNP14IMG, VJ114IMG), NASA GIBS Blue Marble basemap, geoBoundaries. Not an official NASA product. Built for the 2026 NASA Space Apps Challenge, “Harmonization of MODIS and VIIRS Hot Spots”.
+</footer>
+<script src="vendor/leaflet.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
