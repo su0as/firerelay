@@ -1,97 +1,129 @@
-// FireRelay front end. No build step, no server: static files only, so the site keeps working
-// unattended through judging. All harmonization arithmetic below mirrors pipeline/build.mjs.
+// FireRelay front end. Static files only, no build step. The harmonization arithmetic here mirrors pipeline/build.mjs.
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const MONL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const fmt = v => (v == null || isNaN(v)) ? '–' : Math.round(v).toLocaleString('en-US');
-const fmt1 = v => (v == null || isNaN(v)) ? '–' : (v >= 10 ? v.toFixed(0) : v.toFixed(1));
+const kfmt = v => v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : v >= 1e4 ? Math.round(v / 1e3) + 'k' : fmt(v);
+const xfmt = r => !isFinite(r) ? '–' : r >= 10 ? r.toFixed(0) : r.toFixed(1);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const ord = n => n + (n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th');
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
-const META = await (await fetch('data/meta.json')).json();
-const PRESETS = await (await fetch('data/geo/presets.json')).json();
+const [META, PRESETS] = await Promise.all([fetch('data/meta.json').then(r => r.json()), fetch('data/geo/presets.json').then(r => r.json())]);
 const NM = META.nMonths, Y0 = META.y0, NY = NM / 12, ERA = META.eras;
 const AV = META.avail.map(s => Uint8Array.from(s, ch => (ch === '1' ? 1 : 0)));
-const TILESET = new Set(META.tiles);
-const WTILESET = new Set(META.weekly ? META.weekly.tiles : []);
+const TILESET = new Set(META.tiles), WTILESET = new Set(META.weekly ? META.weekly.tiles : []);
 const LASTDATE = META.lastDate ? new Date(META.lastDate + 'T00:00:00Z') : null;
 const ym = m => [Y0 + Math.floor(m / 12), m % 12];
-const mlabel = m => { const [y, mo] = ym(m); return `${MON[mo]} ${y}`; };
-// partial month handling
 const daysIn = m => { const [y, mo] = ym(m); return new Date(Date.UTC(y, mo + 1, 0)).getUTCDate(); };
 const PARTIAL = (LASTDATE && LASTDATE.getUTCDate() < daysIn(ERA.last)) ? ERA.last : -1;
 const LASTFULL = PARTIAL >= 0 ? ERA.last - 1 : ERA.last;
-const BASE_Y1 = ym(LASTFULL)[0] - 1;   // baseline: complete years 2001 .. (last full year)
-if (LASTDATE) $('#fresh').textContent = `NASA FIRMS · data through ${LASTDATE.getUTCDate()} ${MON[LASTDATE.getUTCMonth()]} ${LASTDATE.getUTCFullYear()}`;
+const BASE_Y1 = ym(LASTFULL)[0] - 1;
+const SRCNAME = { 1: 'MODIS · ESTIMATED', 2: 'S-NPP · CROSS-CALIBRATED', 3: 'NOAA-20 · OBSERVED' };
+const SRCSHORT = { 1: 'MODIS · EST.', 2: 'S-NPP · CAL.', 3: 'NOAA-20 · OBS.' };
+const SRCLONG = { 1: 'estimated from Terra and Aqua MODIS', 2: 'S-NPP VIIRS, cross-calibrated to NOAA-20', 3: 'NOAA-20 VIIRS, observed' };
+if (LASTDATE) $('#aoiBuilt').textContent = `DATA TO ${LASTDATE.getUTCDate()} ${MON[LASTDATE.getUTCMonth()].toUpperCase()} ${LASTDATE.getUTCFullYear()}`;
+fetch('data/validation.json').then(r => r.json()).then(v => { $('#stErr').textContent = Math.round(100 * v.stable.block.medianAbsPctError.harmonized) + '%'; }).catch(() => {});
+fetch('data/build_stats.json').then(r => r.json()).then(s => { $('#stDet').textContent = Math.round(s.rows / 1e6) + 'M'; }).catch(() => {});
 
-// ---------------- colour scales (ColorBrewer, colour-blind safe) ----------------
-const SEQ = ['#ffffb2', '#fed976', '#feb24c', '#fd8d3c', '#fc4e2a', '#e31a1c', '#b10026'];
-const ZERO = '#eceff3', NODATA = '#ffffff';
-const DIV = [{ t: 0.25, c: '#2166ac', l: '< ¼ typical' }, { t: 0.5, c: '#67a9cf', l: '¼–½' }, { t: 0.8, c: '#d1e5f0', l: '½–0.8' }, { t: 1.25, c: '#f7f7f7', l: 'typical (0.8–1.25×)' }, { t: 2, c: '#fddbc7', l: '1.25–2×' }, { t: 4, c: '#ef8a62', l: '2–4×' }, { t: Infinity, c: '#b2182b', l: '> 4× typical' }];
-function seqScale(values) {
-  const nz = values.filter(v => v > 0 && isFinite(v)).sort((a, b) => a - b);
-  if (!nz.length) return { color: () => ZERO, breaks: [] };
-  const q = p => nz[Math.min(nz.length - 1, Math.floor(p * nz.length))];
-  let br = [1, 2, 3, 4, 5, 6].map(i => q(i / 7));
-  br = br.map((b, i) => Math.max(b, i ? br[i - 1] : 0));
-  return { color: v => (v == null || isNaN(v)) ? NODATA : v <= 0.5 ? ZERO : SEQ[br.filter(b => v > b).length], breaks: br, max: nz[nz.length - 1] };
+// ---------------- colour ----------------
+const STOPS = ['#3a1a12', '#661d10', '#9a2610', '#cc3d10', '#f0641c', '#fb9a37', '#ffc96e', '#ffe7b8'];
+const ZERO = '#191816', NODATA = '#0f0f0e';
+const hex = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+const STOPRGB = STOPS.map(hex);
+function rampRGB(t) { t = clamp(t, 0, 1); const x = t * (STOPS.length - 1), i = Math.min(STOPS.length - 2, Math.floor(x)), f = x - i, a = STOPRGB[i], b = STOPRGB[i + 1]; return [0, 1, 2].map(k => Math.round(a[k] + (b[k] - a[k]) * f)); }
+const rgb = c => `rgb(${c[0]},${c[1]},${c[2]})`;
+const GRAD = `linear-gradient(90deg,${STOPS.join(',')})`;
+// quantile-rank scale: even use of the ramp across the area's own distribution
+function makeScale(vals) {
+  const nz = Float64Array.from(vals.filter(v => v > 0.5 && isFinite(v))).sort();
+  const rank = v => { let lo = 0, hi = nz.length; while (lo < hi) { const mid = (lo + hi) >> 1; if (nz[mid] < v) lo = mid + 1; else hi = mid; } return nz.length > 1 ? lo / (nz.length - 1) : 1; };
+  const q = p => nz.length ? nz[Math.min(nz.length - 1, Math.floor(p * nz.length))] : 0;
+  return { t: v => (v == null || isNaN(v) || v <= 0.5) ? -1 : 0.06 + 0.94 * rank(v), color: v => (v == null || isNaN(v)) ? NODATA : v <= 0.5 ? ZERO : rgb(rampRGB(0.06 + 0.94 * rank(v))), q, n: nz.length };
 }
+const DIV = [{ t: 0.25, c: '#2d5b9c', l: '<¼' }, { t: 0.5, c: '#3b6fae', l: '¼–½' }, { t: 0.8, c: '#24334a', l: '½–0.8' }, { t: 1.25, c: '#22211e', l: 'typical' }, { t: 2, c: '#5e2a17', l: '1.25–2×' }, { t: 4, c: '#b23e16', l: '2–4×' }, { t: Infinity, c: '#ff6a2b', l: '>4×' }];
 const divColor = r => (r == null || isNaN(r)) ? NODATA : DIV.find(d => r < d.t).c;
 
 // ---------------- map ----------------
 const GIBS = 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/';
-const map = L.map('map', { worldCopyJump: true, minZoom: 2, maxZoom: 11, zoomSnap: 0.5, preferCanvas: true }).setView([2, 108], 4);
-L.tileLayer(GIBS + 'BlueMarble_ShadedRelief_Bathymetry/default/GoogleMapsCompatible_Level8/{z}/{y}/{x}.jpeg', { maxNativeZoom: 7, maxZoom: 11, attribution: 'Basemap: <a href="https://www.earthdata.nasa.gov/eosdis/science-system-description/eosdis-components/gibs">NASA GIBS</a> Blue Marble · boundaries: geoBoundaries' }).addTo(map);
-const cellLayer = L.layerGroup().addTo(map), aoiLayer = L.layerGroup().addTo(map), drawLayer = L.layerGroup().addTo(map);
-const canvasR = L.canvas({ padding: 0.3 });
+const map = L.map('map', { worldCopyJump: true, minZoom: 2, maxZoom: 10, zoomSnap: 0.25, zoomControl: false, attributionControl: true }).setView([0, 110], 4);
+L.control.zoom({ position: 'topright' }).addTo(map);
+L.tileLayer(GIBS + 'BlueMarble_ShadedRelief_Bathymetry/default/GoogleMapsCompatible_Level8/{z}/{y}/{x}.jpeg', { maxNativeZoom: 7, maxZoom: 10, attribution: 'NASA GIBS Blue Marble · geoBoundaries · Leaflet' }).addTo(map);
+map.attributionControl.setPrefix(false);
+map.createPane('heat'); map.getPane('heat').style.zIndex = 350;
+const aoiLayer = L.layerGroup().addTo(map), drawLayer = L.layerGroup().addTo(map);
+const HeatLayer = L.Layer.extend({
+  onAdd(m) { this._m = m; this._c = L.DomUtil.create('canvas', 'leaflet-zoom-hide'); m.getPane('heat').appendChild(this._c); m.on('moveend zoomend resize viewreset', this._reset, this); this._reset(); },
+  setData(d) { this._d = d; this._draw(); },
+  _reset() { const m = this._m, s = m.getSize(), dpr = window.devicePixelRatio || 1; L.DomUtil.setPosition(this._c, m.containerPointToLayerPoint([0, 0])); this._c.width = s.x * dpr; this._c.height = s.y * dpr; this._c.style.width = s.x + 'px'; this._c.style.height = s.y + 'px'; this._draw(); },
+  _draw() {
+    const d = this._d, c = this._c, m = this._m; if (!c) return; const x = c.getContext('2d'), dpr = window.devicePixelRatio || 1;
+    x.setTransform(dpr, 0, 0, dpr, 0, 0); x.clearRect(0, 0, c.width, c.height); if (!d) return;
+    const glow = [];
+    for (const it of d.cells) {
+      const r = Math.floor(it.c / 1440), cc = it.c % 1440, s0 = r * 0.25 - 90, w0 = cc * 0.25 - 180;
+      const p1 = m.latLngToContainerPoint([s0 + 0.25, w0]), p2 = m.latLngToContainerPoint([s0, w0 + 0.25]);
+      const w = p2.x - p1.x, h = p2.y - p1.y; const g = Math.max(0.6, Math.min(1.5, w * 0.06));
+      if (it.t < 0) { x.fillStyle = 'rgba(236,235,228,0.035)'; x.fillRect(p1.x + g, p1.y + g, w - 2 * g, h - 2 * g); continue; }
+      const col = rampRGB(it.t); x.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},${0.62 + 0.3 * it.t})`; x.fillRect(p1.x + g, p1.y + g, w - 2 * g, h - 2 * g);
+      if (d.est && w > 6) { x.strokeStyle = 'rgba(11,11,10,.5)'; x.lineWidth = 1; x.save(); x.beginPath(); x.rect(p1.x + g, p1.y + g, w - 2 * g, h - 2 * g); x.clip(); x.beginPath(); for (let k = -h; k < w; k += 5) { x.moveTo(p1.x + k, p1.y + h); x.lineTo(p1.x + k + h, p1.y); } x.stroke(); x.restore(); }
+      if (it.t > 0.9) glow.push([p1.x + w / 2, p1.y + h / 2, Math.max(w, h), col]);
+    }
+    x.globalCompositeOperation = 'lighter';
+    for (const [cx, cy, s, col] of glow) { const gr = x.createRadialGradient(cx, cy, 0, cx, cy, s * 1.4); gr.addColorStop(0, `rgba(${col[0]},${col[1]},${col[2]},.16)`); gr.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = gr; x.fillRect(cx - s * 1.4, cy - s * 1.4, s * 2.8, s * 2.8); }
+    x.globalCompositeOperation = 'source-over';
+  },
+});
+const heat = new HeatLayer().addTo(map);
+const peak = L.marker([0, 0], { icon: L.divIcon({ className: '', html: '<div class="pulse"><i></i><i></i><b></b></div>', iconSize: [0, 0] }), interactive: false, keyboard: false });
+map.on('mousemove', e => {
+  const lat = e.latlng.lat, lon = L.Util.wrapNum(e.latlng.lng, [-180, 180], true); $('#mapXY').textContent = `LAT ${lat.toFixed(3)}  ·  LON ${lon.toFixed(3)}`;
+  if (mode || !state.byCell) return; const c = Math.floor((lat + 90) / 0.25) * 1440 + Math.floor((lon + 180) / 0.25), hit = state.byCell.get(c);
+  if (!hit) { if (tip.dataset.src === 'map') hideTip(); return; }
+  const [w, cell] = hit, m = state.m, [y, mo] = ym(m), v = cell ? w * harmCell(cell, m) : 0;
+  let typ = []; if (cell) for (let yy = 0; Y0 + yy <= BASE_Y1; yy++) typ.push(w * harmCell(cell, yy * 12 + mo)); typ = typ.filter(isFinite).sort((p, q) => p - q); const tm = typ.length ? typ[typ.length >> 1] : 0;
+  showTip(`<div class="tt"><i style="background:${state.cellScale.color(v)}"></i>${MON[mo]} ${y} · one cell</div><div class="tv"><b>${fmt(v)}</b> HOTSPOTS${tm > 0 ? ` · <b>${xfmt(v / tm)}×</b> ITS TYPICAL ${MON[mo].toUpperCase()}` : ''}<br>CELL ${(Math.floor((lat + 90) / 0.25) * 0.25 - 90).toFixed(2)}°, ${(Math.floor((lon + 180) / 0.25) * 0.25 - 180).toFixed(2)}° · ${Math.round(w * 100)}% INSIDE AREA</div>`, e.originalEvent); tip.dataset.src = 'map';
+});
+map.on('mouseout', () => { if (tip.dataset.src === 'map') hideTip(); });
 
 // ---------------- geometry ----------------
 function ringBBox(r) { let w = 180, e = -180, s = 90, n = -90; for (const [x, y] of r) { if (x < w) w = x; if (x > e) e = x; if (y < s) s = y; if (y > n) n = y; } return { w, e, s, n }; }
-function polysOf(g) { return g.type === 'Polygon' ? [g.coordinates] : g.coordinates; }
+const polysOf = g => g.type === 'Polygon' ? [g.coordinates] : g.coordinates;
 function inRings(x, y, rings) { let ins = false; for (const r of rings) for (let i = 0, j = r.length - 1; i < r.length; j = i++) { const [xi, yi] = r[i], [xj, yj] = r[j]; if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) ins = !ins; } return ins; }
+function polyPrep(geom) { const polys = polysOf(geom).map(p => ({ rings: p, bb: ringBBox(p[0]) })); const bb = polys.reduce((a, p) => ({ w: Math.min(a.w, p.bb.w), e: Math.max(a.e, p.bb.e), s: Math.min(a.s, p.bb.s), n: Math.max(a.n, p.bb.n) }), { w: 180, e: -180, s: 90, n: -90 }); return { polys, bb }; }
 function cellWeights(geom) {
-  const polys = polysOf(geom).map(p => ({ rings: p, bb: ringBBox(p[0]) }));
-  const bb = polys.reduce((a, p) => ({ w: Math.min(a.w, p.bb.w), e: Math.max(a.e, p.bb.e), s: Math.min(a.s, p.bb.s), n: Math.max(a.n, p.bb.n) }), { w: 180, e: -180, s: 90, n: -90 });
-  const r0 = Math.max(0, Math.floor((bb.s + 90) / 0.25)), r1 = Math.min(719, Math.floor((bb.n + 90) / 0.25));
-  const c0 = Math.max(0, Math.floor((bb.w + 180) / 0.25)), c1 = Math.min(1439, Math.floor((bb.e + 180) / 0.25));
-  const out = new Map(); const K = 4;
-  for (let r = r0; r <= r1; r++) {
+  const { polys, bb } = polyPrep(geom); const out = new Map(), K = 4;
+  for (let r = Math.max(0, Math.floor((bb.s + 90) / 0.25)); r <= Math.min(719, Math.floor((bb.n + 90) / 0.25)); r++) {
     const s = r * 0.25 - 90, n = s + 0.25;
-    for (let c = c0; c <= c1; c++) {
-      const w = c * 0.25 - 180, e = w + 0.25;
-      const cand = polys.filter(p => p.bb.w <= e && p.bb.e >= w && p.bb.s <= n && p.bb.n >= s); if (!cand.length) continue;
-      let hit = 0;
-      for (let i = 0; i < K; i++) for (let j = 0; j < K; j++) { const x = w + (i + 0.5) * 0.25 / K, y = s + (j + 0.5) * 0.25 / K; if (cand.some(p => inRings(x, y, p.rings))) hit++; }
+    for (let c = Math.max(0, Math.floor((bb.w + 180) / 0.25)); c <= Math.min(1439, Math.floor((bb.e + 180) / 0.25)); c++) {
+      const w = c * 0.25 - 180, e = w + 0.25; const cand = polys.filter(p => p.bb.w <= e && p.bb.e >= w && p.bb.s <= n && p.bb.n >= s); if (!cand.length) continue;
+      let hit = 0; for (let i = 0; i < K; i++) for (let j = 0; j < K; j++) { const x = w + (i + 0.5) * 0.25 / K, y = s + (j + 0.5) * 0.25 / K; if (cand.some(p => inRings(x, y, p.rings))) hit++; }
       if (hit) out.set(r * 1440 + c, hit / (K * K));
     }
   }
-  return { weights: out, bbox: bb };
+  return out;
 }
 const cellArea = r => { const lat = (r + 0.5) * 0.25 - 90; return (0.25 * 111.32) ** 2 * Math.cos(lat * Math.PI / 180); };
 function circlePoly(lat, lon, km, n = 72) { const ring = []; for (let i = 0; i <= n; i++) { const a = 2 * Math.PI * i / n; ring.push([lon + km / (111.32 * Math.cos(lat * Math.PI / 180)) * Math.cos(a), lat + km / 110.57 * Math.sin(a)]); } return { type: 'Polygon', coordinates: [ring] }; }
 const boxPoly = (w, s, e, n) => ({ type: 'Polygon', coordinates: [[[w, s], [e, s], [e, n], [w, n], [w, s]]] });
 
 // ---------------- data tiles ----------------
-const tileCache = new Map();
+const tileCache = new Map(), wCache = new Map();
 async function gunzipIf(buf) { const u = new Uint8Array(buf, 0, 2); if (u[0] === 0x1f && u[1] === 0x8b) return await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer(); return buf; }
 function getTile(name) {
   if (!tileCache.has(name)) tileCache.set(name, (async () => {
-    const buf = await gunzipIf(await (await fetch(`data/tiles/${name}.bin`)).arrayBuffer());
-    const dv = new DataView(buf); const n = dv.getUint16(4, true), nm = dv.getUint16(6, true); const cells = new Map(); let o = 8;
-    for (let i = 0; i < n; i++) {
-      const li = dv.getUint16(o, true); const rS = dv.getFloat32(o + 2, true); const kT = new Float32Array(12), kA = new Float32Array(12);
-      for (let j = 0; j < 12; j++) { kT[j] = dv.getFloat32(o + 6 + 4 * j, true); kA[j] = dv.getFloat32(o + 54 + 4 * j, true); }
-      o += 102; cells.set(li, { kT, kA, rS, cn: new Uint32Array(buf.slice(o, o + 16 * nm)) }); o += 16 * nm;
-    }
+    const buf = await gunzipIf(await (await fetch(`data/tiles/${name}.bin`)).arrayBuffer()); const dv = new DataView(buf);
+    const n = dv.getUint16(4, true), nm = dv.getUint16(6, true); const cells = new Map(); let o = 8;
+    for (let i = 0; i < n; i++) { const li = dv.getUint16(o, true), rS = dv.getFloat32(o + 2, true), kT = new Float32Array(12), kA = new Float32Array(12); for (let j = 0; j < 12; j++) { kT[j] = dv.getFloat32(o + 6 + 4 * j, true); kA[j] = dv.getFloat32(o + 54 + 4 * j, true); } o += 102; cells.set(li, { kT, kA, rS, cn: new Uint32Array(buf.slice(o, o + 16 * nm)) }); o += 16 * nm; }
     return cells;
   })());
   return tileCache.get(name);
 }
-const wCache = new Map();
 function getWTile(name) {
   if (!wCache.has(name)) wCache.set(name, (async () => {
-    const buf = await gunzipIf(await (await fetch(`data/weekly/${name}.bin`)).arrayBuffer());
-    const dv = new DataView(buf); const n = dv.getUint16(4, true), nw = dv.getUint16(6, true); const cells = new Map(); let o = 8;
+    const buf = await gunzipIf(await (await fetch(`data/weekly/${name}.bin`)).arrayBuffer()); const dv = new DataView(buf);
+    const n = dv.getUint16(4, true), nw = dv.getUint16(6, true); const cells = new Map(); let o = 8;
     for (let i = 0; i < n; i++) { const li = dv.getUint16(o, true); o += 2; cells.set(li, new Float32Array(buf.slice(o, o + 4 * nw))); o += 4 * nw; }
     return cells;
   })());
@@ -105,30 +137,27 @@ function harmCell(cell, m) {
   return n ? s / n : NaN;
 }
 const srcOf = m => (m >= ERA.n20Start && AV[3][m]) ? 3 : (m >= ERA.snppStart && AV[2][m]) ? 2 : (AV[0][m] || AV[1][m]) ? 1 : -1;
-const SRCNAME = { 1: 'estimated from MODIS', 2: 'S-NPP VIIRS, cross-calibrated to NOAA-20', 3: 'NOAA-20 VIIRS, observed' };
 function band(m, v) {
   const s = srcOf(m);
-  if (s === 1) { const u = META.uncertainty.find(b => v >= b.lo && v < b.hi) || META.uncertainty[META.uncertainty.length - 1] || { q10: -0.5, q90: 0.5 }; return [v * Math.exp(u.q10), v * Math.exp(u.q90)]; }
+  if (s === 1) { const u = META.uncertainty.find(b => v >= b.lo && v < b.hi) || META.uncertainty[META.uncertainty.length - 1]; return [v * Math.exp(u.q10), v * Math.exp(u.q90)]; }
   if (s === 2 && META.snppUnc) return [v * Math.exp(META.snppUnc.q10), v * Math.exp(META.snppUnc.q90)];
   return [v, v];
 }
 
 // ---------------- state ----------------
-const state = { aoi: null, view: 'count', step: 'month', sel: null, series: null, cells: null, weekly: null, ts: { harm: true, modis: true, snpp: true, n20: true } };
+const state = { aoi: null, view: 'count', step: 'month', m: LASTFULL, series: null, cells: null, weekly: null, playing: false, speed: 8, cmp: false, cellScale: null, monthScale: null };
 
 async function computeSeries(weights) {
   const names = new Set(); for (const c of weights.keys()) { const r = Math.floor(c / 1440), cc = c % 1440; names.add(`${Math.floor(r / 20)}_${Math.floor(cc / 20)}`); }
   const tiles = new Map(await Promise.all([...names].filter(n => TILESET.has(n)).map(async n => [n, await getTile(n)])));
-  const H = new Float64Array(NM), T = new Float64Array(NM), A = new Float64Array(NM), SN = new Float64Array(NM), N2 = new Float64Array(NM);
-  const used = [];
+  const H = new Float64Array(NM), T = new Float64Array(NM), A = new Float64Array(NM), SN = new Float64Array(NM), N2 = new Float64Array(NM), used = [];
   for (const [c, w] of weights) {
-    const r = Math.floor(c / 1440), cc = c % 1440; const t = tiles.get(`${Math.floor(r / 20)}_${Math.floor(cc / 20)}`); if (!t) continue;
-    const cell = t.get((r % 20) * 20 + (cc % 20)); if (!cell) continue;
+    const r = Math.floor(c / 1440), cc = c % 1440; const t = tiles.get(`${Math.floor(r / 20)}_${Math.floor(cc / 20)}`); const cell = t && t.get((r % 20) * 20 + (cc % 20));
+    if (!cell) { used.push([c, w, null]); continue; }
     used.push([c, w, cell]);
     for (let m = 0; m < NM; m++) { const h = harmCell(cell, m); if (!isNaN(h)) H[m] += w * h; T[m] += w * cell.cn[m]; A[m] += w * cell.cn[NM + m]; SN[m] += w * cell.cn[2 * NM + m]; N2[m] += w * cell.cn[3 * NM + m]; }
   }
-  for (let m = 0; m < NM; m++) { if (srcOf(m) < 0 || m > ERA.last) H[m] = NaN; }
-  // climatology over complete baseline years
+  for (let m = 0; m < NM; m++) if (srcOf(m) < 0 || m > ERA.last) H[m] = NaN;
   const med = [], rank = new Array(NM).fill(null), nYears = [];
   for (let j = 0; j < 12; j++) {
     const vals = []; for (let y = 0; Y0 + y <= BASE_Y1; y++) { const v = H[y * 12 + j]; if (!isNaN(v)) vals.push(v); }
@@ -138,12 +167,9 @@ async function computeSeries(weights) {
   }
   return { H, T, A, SN, N2, med, rank, nYears, used };
 }
-
 async function computeWeekly(geom) {
   if (!META.weekly) return null;
-  const NWK = META.weekly.nWeeks, polys = polysOf(geom).map(p => ({ rings: p, bb: ringBBox(p[0]) }));
-  const bb = polys.reduce((a, p) => ({ w: Math.min(a.w, p.bb.w), e: Math.max(a.e, p.bb.e), s: Math.min(a.s, p.bb.s), n: Math.max(a.n, p.bb.n) }), { w: 180, e: -180, s: 90, n: -90 });
-  const W = new Float64Array(NWK); const need = new Map();
+  const NWK = META.weekly.nWeeks, { polys, bb } = polyPrep(geom), W = new Float64Array(NWK), need = new Map();
   for (let r = Math.max(0, Math.floor(bb.s + 90)); r <= Math.min(179, Math.floor(bb.n + 90)); r++) for (let c = Math.max(0, Math.floor(bb.w + 180)); c <= Math.min(359, Math.floor(bb.e + 180)); c++) {
     const s = r - 90, w = c - 180; let hit = 0; const K = 6;
     for (let i = 0; i < K; i++) for (let j = 0; j < K; j++) { const x = w + (i + 0.5) / K, y = s + (j + 0.5) / K; if (polys.some(p => p.bb.w <= x && p.bb.e >= x && p.bb.s <= y && p.bb.n >= y && inRings(x, y, p.rings))) hit++; }
@@ -155,228 +181,288 @@ async function computeWeekly(geom) {
   return W;
 }
 
-// ---------------- AOI selection ----------------
-async function setAOI(aoi, { fit = true, push = true } = {}) {
-  state.aoi = aoi; state.sel = null;
-  $('#empty').hidden = true; $('#result').hidden = false;
-  $('#aoiName').textContent = aoi.name; $('#aoiSub').textContent = 'Loading NASA FIRMS tiles…';
-  $('#cards').innerHTML = ''; $('#calendar').innerHTML = '<div class="loading">Harmonizing 26 years of hotspots…</div>'; $('#ts').innerHTML = '';
-  $$('.chip[data-preset]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.preset === aoi.id)));
-  aoiLayer.clearLayers(); cellLayer.clearLayers(); drawLayer.clearLayers();
-  const gl = L.geoJSON(aoi.geometry, { style: { color: '#ffdd57', weight: 2.5, fill: false } }).addTo(aoiLayer);
-  if (fit) map.fitBounds(gl.getBounds(), { padding: [20, 20], maxZoom: 8 });
-  const { weights } = cellWeights(aoi.geometry);
-  state.cells = weights;
-  if (!weights.size) { $('#calendar').innerHTML = '<p class="hint">This area is smaller than one 0.25° cell centre sample. Draw a slightly larger area.</p>'; return; }
-  const [series, weekly] = await Promise.all([computeSeries(weights), computeWeekly(aoi.geometry)]);
-  if (state.aoi !== aoi) return; // superseded
-  state.series = series; state.weekly = weekly;
-  let area = 0; for (const [c, w] of weights) area += w * cellArea(Math.floor(c / 1440));
-  $('#aoiSub').textContent = `≈ ${fmt(area)} km² · ${weights.size.toLocaleString()} cells of 0.25° · ${aoi.note || ''}`;
-  drawCells();
-  renderCards(); renderCalendar(); renderTS(); if (!$('#tableWrap').hidden) renderTable();
-  if (push) writeHash();
-}
-function drawCells(monthSel = null) {
-  cellLayer.clearLayers();
-  const s = state.series; if (!s) return;
-  let vals = null, sc = null;
-  if (monthSel != null) { vals = new Map(s.used.map(([c, w, cell]) => [c, w * harmCell(cell, monthSel)])); sc = seqScale([...vals.values()]); }
-  const big = state.cells.size > 4000;
-  for (const [c, w] of state.cells) {
-    const r = Math.floor(c / 1440), cc = c % 1440, s0 = r * 0.25 - 90, w0 = cc * 0.25 - 180;
-    if (monthSel != null) { const v = vals.get(c) || 0; if (v <= 0.5) continue; L.rectangle([[s0, w0], [s0 + 0.25, w0 + 0.25]], { renderer: canvasR, weight: 0, fillColor: sc.color(v), fillOpacity: 0.85, interactive: false }).addTo(cellLayer); }
-    else if (!big) L.rectangle([[s0, w0], [s0 + 0.25, w0 + 0.25]], { renderer: canvasR, weight: 0.6, color: '#ffffff', opacity: 0.55, fill: false, interactive: false }).addTo(cellLayer);
-  }
-  $('#mapLegend').innerHTML = monthSel != null ? `<b>${mlabel(monthSel)}</b>: hotspots per 0.25° cell (NOAA-20 equivalent), darker = more. <a href="#" id="clearSel">Show counted cells</a>` : (big ? 'Large area: cell outlines hidden for speed.' : 'Outlined squares are the 0.25° cells counted for your area.');
-  const cl = $('#clearSel'); if (cl) cl.onclick = e => { e.preventDefault(); state.sel = null; drawCells(); renderCalendar(); };
+// ---------------- number tweening ----------------
+function tween(el, to, f = fmt, dur = 750) {
+  const from = +el.dataset.v || 0; el.dataset.v = to; const t0 = performance.now();
+  if (!isFinite(to)) { el.firstChild.nodeValue = f(to); return; }
+  const step = now => { const k = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - k, 4); el.firstChild.nodeValue = f(from + (to - from) * e); if (k < 1) requestAnimationFrame(step); };
+  requestAnimationFrame(step);
 }
 
-// ---------------- status cards ----------------
-function classify(v, med, rank) {
-  if (isNaN(v)) return ['b-typical', 'no data'];
-  const r = med > 0 ? v / med : (v > 0 ? Infinity : 1);
-  if (rank && rank <= 3 && r >= 1.5) return ['b-extreme', rank === 1 ? 'record' : `top ${rank}`];
-  if (r >= 1.25) return ['b-above', 'above typical'];
-  if (r <= 0.8) return ['b-below', 'below typical'];
-  return ['b-typical', 'typical'];
+// ---------------- AOI ----------------
+let aoiSeq = 0;
+async function setAOI(aoi, { fit = true, push = true } = {}) {
+  const seq = ++aoiSeq; stop();
+  state.aoi = aoi;
+  $$('.file').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.preset === aoi.id)));
+  const pi = PRESETS.findIndex(p => p.id === aoi.id);
+  $('#aoiKick').textContent = pi >= 0 ? `AREA / ${String(pi + 1).padStart(2, '0')} · ${PRESETS[pi].group.split('(')[0].trim().toUpperCase()}` : `AREA / CUSTOM · ${aoi.kind.toUpperCase()}`;
+  $('#aoiName').textContent = aoi.name; $('#aoiDeck').textContent = aoi.note || 'Your own area. Every number below is computed in your browser from the harmonized record.';
+  $('#aoiMeta').textContent = 'HARMONIZING 26 YEARS…';
+  $('#calendar').innerHTML = '<div class="loading">HARMONIZING 26 YEARS OF HOTSPOTS</div>';
+  aoiLayer.clearLayers(); drawLayer.clearLayers(); map.removeLayer(peak);
+  const gl = L.geoJSON(aoi.geometry, { style: { color: '#ecebe4', weight: 1.2, opacity: 0.85, fill: false, dashArray: '3 4' }, interactive: false }).addTo(aoiLayer);
+  if (fit) map.flyToBounds(gl.getBounds(), { padding: [30, 30], maxZoom: 8, duration: 1.1 });
+  const weights = cellWeights(aoi.geometry); state.cells = weights;
+  if (!weights.size) { $('#calendar').innerHTML = '<p class="note">This area is smaller than one 0.25° cell. Draw a slightly larger area.</p>'; return; }
+  const [series, weekly] = await Promise.all([computeSeries(weights), computeWeekly(aoi.geometry)]);
+  if (seq !== aoiSeq) return;
+  state.series = series; state.weekly = weekly; state.byCell = new Map(series.used.map(([c, w, cell]) => [c, [w, cell]]));
+  // scales: map cells across all months; calendar across monthly totals
+  const cv = []; const stepM = Math.max(1, Math.round(series.used.length * ERA.last / 400000));
+  for (const [, w, cell] of series.used) if (cell) for (let m = 0; m <= ERA.last; m += stepM) { const v = harmCell(cell, m); if (v > 0) cv.push(w * v); }
+  state.cellScale = makeScale(cv);
+  state.monthScale = makeScale(Array.from(series.H).filter((v, m) => m <= ERA.last));
+  let area = 0; for (const [c, w] of weights) area += w * cellArea(Math.floor(c / 1440));
+  $('#aoiMeta').textContent = `≈ ${fmt(area)} KM²  ·  ${weights.size.toLocaleString()} CELLS  ·  2001–${ym(ERA.last)[0]}`;
+  renderMetrics(); renderCalendar(); buildTimeline(); renderMapRamp();
+  setMonth(state.m, { force: true });
+  if (!$('#tableWrap').hidden) renderTable();
+  if (push) writeHash();
 }
-function renderCards() {
-  const s = state.series, out = [];
-  const m = LASTFULL, [y, mo] = ym(m), v = s.H[m], md = s.med[mo];
-  const [cls, lab] = classify(v, md, s.rank[m]);
-  out.push(`<div class="card"><div class="k">${MONL[mo]} ${y} · latest full month</div><div class="v">${fmt(v)}</div><div class="d"><span class="badge ${cls}">${lab}</span> ${md > 0 ? (v / md).toFixed(1) + '× the typical ' + MON[mo] : ''}<br>rank ${s.rank[m] ?? '–'} of ${s.nYears[mo]} ${MONL[mo]}s since ${Y0}</div></div>`);
-  if (PARTIAL >= 0) { const [py, pm] = ym(PARTIAL); const d = LASTDATE.getUTCDate(); out.push(`<div class="card"><div class="k">${MON[pm]} 1–${d}, ${py} · so far</div><div class="v">${fmt(s.H[PARTIAL])}</div><div class="d">Partial month (NRT data). A typical full ${MONL[pm]} has ${fmt(s.med[pm])}.</div></div>`); }
-  // year to date
-  const ytdEnd = mo; let cur = 0; for (let j = 0; j <= ytdEnd; j++) cur += s.H[(y - Y0) * 12 + j];
-  const past = []; for (let yy = Y0; yy <= BASE_Y1; yy++) { let t = 0; for (let j = 0; j <= ytdEnd; j++) t += s.H[(yy - Y0) * 12 + j]; past.push(t); }
-  const sp = [...past].sort((a, b) => a - b); const pmed = sp[sp.length >> 1]; const prank = past.filter(t => t > cur).length + 1;
-  const [c2, l2] = classify(cur, pmed, prank);
-  out.push(`<div class="card"><div class="k">${y} so far · Jan to ${MON[mo]}</div><div class="v">${fmt(cur)}</div><div class="d"><span class="badge ${c2}">${l2}</span> ${pmed > 0 ? (cur / pmed).toFixed(1) + '× typical' : ''}<br>rank ${prank} of ${past.length + 1} years</div></div>`);
-  // season
-  const mx = Math.max(...s.med.filter(x => !isNaN(x)));
-  if (mx > 0) {
-    const peak = s.med.indexOf(mx); const inS = s.med.map(x => x >= 0.5 * mx);
-    let a = peak, b = peak; while (inS[(a + 11) % 12] && (a + 11) % 12 !== peak) a = (a + 11) % 12; while (inS[(b + 1) % 12] && (b + 1) % 12 !== a) b = (b + 1) % 12;
-    let share = 0, tot = s.med.reduce((p, q) => p + (q || 0), 0); for (let j = a; ; j = (j + 1) % 12) { share += s.med[j] || 0; if (j === b) break; }
-    out.push(`<div class="card"><div class="k">Typical burning season</div><div class="v">${a === b ? MON[a] : MON[a] + '–' + MON[b]}</div><div class="d">Peak month ${MONL[peak]}; these months hold ${Math.round(100 * share / tot)}% of a typical year (medians ${Y0}–${BASE_Y1}).</div></div>`);
-  } else out.push(`<div class="card"><div class="k">Typical burning season</div><div class="v">–</div><div class="d">Too few hotspots to define a season.</div></div>`);
-  $('#cards').innerHTML = out.join('');
+
+// ---------------- month cursor ----------------
+function setMonth(m, { force = false } = {}) {
+  m = clamp(m, 0, ERA.last); if (m === state.m && !force) return; state.m = m;
+  const s = state.series; if (!s) return;
+  const est = srcOf(m) === 1;
+  // map
+  const cells = []; let best = null;
+  for (const [c, w, cell] of s.used) { const v = cell ? w * harmCell(cell, m) : 0; const t = state.cellScale.t(v); cells.push({ c, t }); if (v > 0 && (!best || v > best.v)) best = { c, v }; }
+  heat.setData({ cells, est });
+  if (best && best.v >= 1) { const r = Math.floor(best.c / 1440), cc = best.c % 1440; peak.setLatLng([r * 0.25 - 90 + 0.125, cc * 0.25 - 180 + 0.125]); if (!map.hasLayer(peak)) peak.addTo(map); const b = peak.getElement() && peak.getElement().querySelector('b'); if (b) b.textContent = `PEAK CELL ${fmt(best.v)}`; } else map.removeLayer(peak);
+  const [y, mo] = ym(m);
+  $('#mapK1').textContent = `${MON[mo].toUpperCase()} ${y}`; $('#mapK2').textContent = SRCNAME[srcOf(m)] || '';
+  // calendar highlight
+  $$('#calendar .cell.sel').forEach(c => c.classList.remove('sel')); const cc = $(`#calendar .cell[data-m="${m}"]`); if (cc) cc.classList.add('sel');
+  // timeline
+  updateTimeline(); renderNarration();
+}
+function narrationFor(m) {
+  const s = state.series, [y, mo] = ym(m), v = s.H[m], md = s.med[mo], r = md > 0 ? v / md : (v > 0 ? Infinity : 1), rk = s.rank[m], n = s.nYears[mo];
+  if (m === ERA.snppStart) return 'The first handover: S-NPP VIIRS takes the baton from MODIS. Without calibration, fire counts would jump here.';
+  if (m === ERA.n20Start) return 'The second handover: NOAA-20 takes over. From here every month is observed, with no model in between.';
+  if (m === PARTIAL) return `${MONL[mo]} so far, to the ${ord(LASTDATE.getUTCDate())}: ${fmt(v)} hotspots, against ${fmt(md)} in a typical full ${MONL[mo]}.`;
+  if (isNaN(v)) return 'No satellite data for this month.';
+  if (md < 3 && v < 3) return `Almost no fire, as usual for ${MONL[mo]} here.`;
+  if (rk === 1 && n >= 10 && r >= 1.25) return `The most fire in any ${MONL[mo]} since ${Y0}: ${xfmt(r)}× a typical ${MONL[mo]}.`;
+  if (rk && rk <= 3 && r >= 1.5) return `${xfmt(r)}× a typical ${MONL[mo]}, the ${ord(rk)} highest in ${n} years.`;
+  if (r >= 2) return `${xfmt(r)}× a typical ${MONL[mo]}. A bad month for fire.`;
+  if (r >= 1.25) return `Busier than a typical ${MONL[mo]}: ${xfmt(r)}× the usual count.`;
+  if (r <= 0.25) return `A very quiet ${MONL[mo]}: about a ${r < 0.15 ? 'tenth' : 'fifth'} of the usual fire.`;
+  if (r <= 0.8) return `Quieter than usual: ${xfmt(r)}× a typical ${MONL[mo]}.`;
+  return `Close to a typical ${MONL[mo]} for this area.`;
+}
+function renderNarration() {
+  const m = state.m, [y, mo] = ym(m), s = state.series, v = s.H[m], src = srcOf(m);
+  const [lo, hi] = band(m, v);
+  $('#narrT').innerHTML = `<span>${MON[mo].toUpperCase()} ${y}  ·  ${fmt(v)} HOTSPOTS${src !== 3 && !isNaN(v) ? `  ·  80% ${kfmt(lo)}–${kfmt(hi)}` : ''}</span><span class="src">${SRCSHORT[src] || ''}</span>`;
+  const el = $('#narr'), txt = narrationFor(m);
+  if (el.textContent !== txt) { if (state.playing) el.textContent = txt; else { el.classList.add('fade'); setTimeout(() => { el.textContent = txt; el.classList.remove('fade'); }, 140); } }
+}
+
+// ---------------- metrics ----------------
+function classify(v, md, rk) { const r = md > 0 ? v / md : (v > 0 ? Infinity : 1); if (rk && rk <= 3 && r >= 1.5) return ['hot', rk === 1 ? 'RECORD' : `${ord(rk).toUpperCase()} HIGHEST`]; if (r >= 1.25) return ['hot', `RANK ${rk}`]; if (r <= 0.8) return ['cool', `RANK ${rk}`]; return ['', `RANK ${rk}`]; }
+function renderMetrics() {
+  const s = state.series, m = LASTFULL, [y, mo] = ym(m), v = s.H[m], md = s.med[mo]; const [c1, l1] = classify(v, md, s.rank[m]);
+  let cur = 0; for (let j = 0; j <= mo; j++) cur += s.H[(y - Y0) * 12 + j];
+  const past = []; for (let yy = Y0; yy <= BASE_Y1; yy++) { let t = 0; for (let j = 0; j <= mo; j++) t += s.H[(yy - Y0) * 12 + j]; past.push(t); }
+  const sp = [...past].sort((a, b) => a - b), pmed = sp[sp.length >> 1], prank = past.filter(t => t > cur).length + 1; const [c2, l2] = classify(cur, pmed, prank);
+  const mx = Math.max(...s.med.filter(x => !isNaN(x))); let season = '–', share = 0, peakM = 0;
+  if (mx > 0) { peakM = s.med.indexOf(mx); const inS = s.med.map(x => x >= 0.5 * mx); let a = peakM, b = peakM; while (inS[(a + 11) % 12] && (a + 11) % 12 !== peakM) a = (a + 11) % 12; while (inS[(b + 1) % 12] && (b + 1) % 12 !== a) b = (b + 1) % 12; const tot = s.med.reduce((p, q) => p + (q || 0), 0); for (let j = a; ; j = (j + 1) % 12) { share += s.med[j] || 0; if (j === b) break; } share = Math.round(100 * share / tot); season = a === b ? MON[a] : `${MON[a]}–${MON[b]}`; }
+  $('#metrics').innerHTML = `
+    <div class="metric"><div class="v"><span id="mv1">0</span><small>${md > 0 ? xfmt(v / md) + '×' : ''}</small></div><div class="l"><b>${MON[mo].toUpperCase()} ${y}</b><br><span class="${c1}">${l1}</span> OF ${s.nYears[mo]}</div></div>
+    <div class="metric"><div class="v"><span id="mv2">0</span><small>${pmed > 0 ? xfmt(cur / pmed) + '×' : ''}</small></div><div class="l"><b>${y} TO ${MON[mo].toUpperCase()}</b><br><span class="${c2}">${l2}</span> OF ${past.length + 1}</div></div>
+    <div class="metric"><div class="v" style="font-size:24px;padding-top:4px"><span>${season}</span></div><div class="l"><b>TYPICAL SEASON</b><br>${share}% OF A YEAR · PEAK ${MON[peakM].toUpperCase()}</div></div>`;
+  $('#mv1').dataset.v = 0; $('#mv2').dataset.v = 0; tween($('#mv1'), v); tween($('#mv2'), cur);
 }
 
 // ---------------- calendar ----------------
 const tip = $('#tip');
-function showTip(html, ev) { tip.innerHTML = html; tip.hidden = false; const x = Math.min(window.innerWidth - 340, ev.clientX + 14), y = Math.min(window.innerHeight - tip.offsetHeight - 10, ev.clientY + 14); tip.style.left = x + 'px'; tip.style.top = y + 'px'; }
+function showTip(html, ev) { tip.dataset.src = ''; tip.innerHTML = html; tip.hidden = false; const x = Math.min(window.innerWidth - 336, ev.clientX + 16), y = Math.min(window.innerHeight - tip.offsetHeight - 12, ev.clientY + 16); tip.style.left = x + 'px'; tip.style.top = y + 'px'; }
 const hideTip = () => { tip.hidden = true; };
 function cellTip(m) {
   const s = state.series, [y, mo] = ym(m), v = s.H[m], src = srcOf(m);
-  if (m > ERA.last || isNaN(v)) return `<b>${MONL[mo]} ${y}</b><br><span class="s">No data yet.</span>`;
-  const [lo, hi] = band(m, v), md = s.med[mo];
-  return `<b>${MONL[mo]} ${y}${m === PARTIAL ? ' (1–' + LASTDATE.getUTCDate() + ', partial)' : ''}</b><br>${fmt(v)} hotspots, NOAA-20 equivalent` + (src !== 3 ? `<br><span class="s">80% range ${fmt(lo)} to ${fmt(hi)}</span>` : '') +
-    `<br>${md > 0 ? (v / md).toFixed(2) + '× typical ' + MON[mo] + ' (' + fmt(md) + ')' : 'typical ' + MON[mo] + ': ' + fmt(md)}` + (s.rank[m] ? ` · rank ${s.rank[m]}/${s.nYears[mo]}` : '') +
-    `<br><span class="s">Source: ${SRCNAME[src]}</span><br><span class="s">Raw: Terra ${fmt(s.T[m])} · Aqua ${fmt(s.A[m])} · S-NPP ${AV[2][m] ? fmt(s.SN[m]) : '–'} · NOAA-20 ${AV[3][m] ? fmt(s.N2[m]) : '–'}</span>`;
+  if (m > ERA.last || isNaN(v)) return `<div class="tt">${MONL[mo]} ${y}</div><div class="tv">No data yet.</div>`;
+  const [lo, hi] = band(m, v), md = s.med[mo], col = state.view === 'anom' ? divColor(md > 0 ? v / md : 9) : state.monthScale.color(v);
+  return `<div class="tt"><i style="background:${col}"></i>${MONL[mo]} ${y}${m === PARTIAL ? ' <span style="font-size:12px;color:var(--ink3)">(partial)</span>' : ''}</div>` +
+    `<div class="tv"><b>${fmt(v)}</b> HOTSPOTS · NOAA-20 UNITS${src !== 3 ? `<br>80% RANGE ${fmt(lo)}–${fmt(hi)}` : ''}<br>${md > 0 ? `<b>${xfmt(v / md)}×</b> A TYPICAL ${MON[mo].toUpperCase()} (${fmt(md)})` : `TYPICAL ${MON[mo].toUpperCase()}: ${fmt(md)}`}${s.rank[m] ? ` · RANK ${s.rank[m]}/${s.nYears[mo]}` : ''}</div>` +
+    `<div class="ts">${SRCLONG[src]}<br>RAW · TERRA ${fmt(s.T[m])} · AQUA ${fmt(s.A[m])} · S-NPP ${AV[2][m] ? fmt(s.SN[m]) : '–'} · NOAA-20 ${AV[3][m] ? fmt(s.N2[m]) : '–'}</div>`;
 }
+const SENSCOL = { 1: '#8a6a4a', 2: '#5b8fd9', 3: '#7fb27a' };
 function renderCalendar() {
   if (state.step === 'week') return renderWeekly();
-  const s = state.series, el = $('#calendar'); const W = Math.max(520, el.clientWidth || 720);
-  const LW = 44, RW = 92, gap = 2, cw = (W - LW - RW - gap * 12) / 12, ch = 17, top = 18;
-  const rows = NY + 2; const H = top + rows * (ch + gap) + 6;
-  const sc = seqScale(Array.from(s.H).filter((v, m) => m <= ERA.last));
-  const annual = []; for (let y = 0; y < NY; y++) { let t = 0, ok = true; for (let j = 0; j < 12; j++) { const v = s.H[y * 12 + j]; if (isNaN(v)) ok = false; else t += v; } annual.push({ t, ok }); }
+  const s = state.series, el = $('#calendar'), W = Math.max(380, el.clientWidth || 430);
+  const LW = 40, RW = 62, gap = 1.6, cw = (W - LW - RW - gap * 11) / 12, ch = 10.6, top = 15, NYR = NY;
+  const H = top + (NYR + 1.6) * (ch + gap) + 4, sc = state.monthScale;
+  const annual = []; for (let y = 0; y < NYR; y++) { let t = 0, ok = true; for (let j = 0; j < 12; j++) { const v = s.H[y * 12 + j]; if (isNaN(v) || y * 12 + j > ERA.last) ok = false; else t += v; } annual.push({ t, ok: ok && y * 12 + 11 <= LASTFULL }); }
   const amax = Math.max(1, ...annual.map(a => a.t));
-  let svg = `<svg viewBox="0 0 ${W} ${H}" role="grid" aria-label="Monthly burning calendar ${Y0} to ${Y0 + NY - 1}, rows are years, columns are months"><defs><pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="5" stroke="rgba(255,255,255,.75)" stroke-width="1.4"/></pattern></defs>`;
-  MON.forEach((mn, j) => svg += `<text x="${LW + j * (cw + gap) + cw / 2}" y="12" font-size="11" text-anchor="middle" fill="#4a5563">${mn}</text>`);
-  svg += `<text x="${W - RW + 4}" y="12" font-size="11" fill="#4a5563">Year total</text>`;
-  for (let y = 0; y < NY; y++) {
-    const yy = top + y * (ch + gap);
-    svg += `<text x="${LW - 6}" y="${yy + ch - 4}" font-size="11" text-anchor="end" fill="#4a5563">${Y0 + y}</text>`;
+  let g = `<svg viewBox="0 0 ${W} ${H}" role="grid" aria-label="Monthly burning calendar ${Y0} to ${Y0 + NYR - 1}. Rows are years, columns are months."><defs><pattern id="hatch" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="4" stroke="rgba(11,11,10,.55)" stroke-width="1.3"/></pattern></defs>`;
+  g += `<rect id="rowhl" class="rowhl" x="0" y="0" width="${W}" height="${ch + 2}" visibility="hidden"/>`;
+  MON.forEach((mn, j) => g += `<text x="${LW + j * (cw + gap) + cw / 2}" y="9" text-anchor="middle">${mn.toUpperCase().slice(0, 1)}</text>`);
+  g += `<text x="${W - RW + 6}" y="9">YEAR</text>`;
+  for (let y = 0; y < NYR; y++) {
+    const yy = top + y * (ch + gap), m0 = y * 12, src = srcOf(Math.min(m0 + 6, ERA.last));
+    g += `<text x="${LW - 9}" y="${yy + ch - 2}" text-anchor="end" style="font-size:8.5px">${Y0 + y}</text><rect x="${LW - 5}" y="${yy}" width="2" height="${ch}" fill="${SENSCOL[src] || '#333'}" opacity=".8"/>`;
     for (let j = 0; j < 12; j++) {
-      const m = y * 12 + j, v = s.H[m], x = LW + j * (cw + gap);
-      const fill = m > ERA.last ? NODATA : state.view === 'anom' ? divColor(s.med[j] > 0 ? v / s.med[j] : (v > 0 ? 9 : 1)) : sc.color(v);
-      const lbl = `${MONL[j]} ${Y0 + y}: ${isNaN(v) || m > ERA.last ? 'no data' : fmt(v) + ' hotspots'}`;
-      svg += `<rect class="cell${state.sel === m ? ' sel' : ''}" data-m="${m}" x="${x}" y="${yy}" width="${cw}" height="${ch}" rx="2" fill="${fill}" ${m > ERA.last ? 'stroke="#e3e7ec" stroke-dasharray="2 2"' : ''} tabindex="${m === LASTFULL ? 0 : -1}" role="gridcell" aria-label="${lbl}"/>`;
-      if (srcOf(m) === 1 && m <= ERA.last) svg += `<rect x="${x}" y="${yy}" width="${cw}" height="${ch}" rx="2" fill="url(#hatch)" pointer-events="none"/>`;
-      if (m === PARTIAL) svg += `<rect x="${x + 0.5}" y="${yy + 0.5}" width="${cw - 1}" height="${ch - 1}" rx="2" fill="none" stroke="#11161c" stroke-dasharray="3 2" pointer-events="none"/>`;
-      if (s.rank[m] === 1 && s.nYears[j] >= 10 && v > 0) svg += `<circle cx="${x + cw - 5}" cy="${yy + 5}" r="2.6" fill="#fff" stroke="#11161c" stroke-width="1" pointer-events="none"/>`;
+      const m = m0 + j, v = s.H[m], x = LW + j * (cw + gap);
+      if (m > ERA.last) { g += `<rect x="${x + .5}" y="${yy + .5}" width="${cw - 1}" height="${ch - 1}" fill="none" stroke="#1f1e1b" stroke-dasharray="2 2"/>`; continue; }
+      const fill = state.view === 'anom' ? divColor(s.med[j] > 0 ? v / s.med[j] : (v > 0 ? 9 : 1)) : sc.color(v);
+      g += `<rect class="cell" style="--r:${y};--c:${j}" data-m="${m}" x="${x}" y="${yy}" width="${cw}" height="${ch}" rx="1" fill="${fill}" tabindex="${m === state.m ? 0 : -1}" role="gridcell" aria-label="${MONL[j]} ${Y0 + y}: ${isNaN(v) ? 'no data' : fmt(v) + ' hotspots'}"/>`;
+      if (srcOf(m) === 1) g += `<rect x="${x}" y="${yy}" width="${cw}" height="${ch}" rx="1" fill="url(#hatch)" pointer-events="none"/>`;
+      if (m === PARTIAL) g += `<rect x="${x + .5}" y="${yy + .5}" width="${cw - 1}" height="${ch - 1}" fill="none" stroke="#ecebe4" stroke-dasharray="2 2" pointer-events="none"/>`;
+      if (s.rank[m] === 1 && s.nYears[j] >= 10 && v > 0 && s.med[j] > 0 && v / s.med[j] >= 1.25) g += `<circle cx="${x + cw - 4}" cy="${yy + 4}" r="2.2" fill="#ecebe4" pointer-events="none"/>`;
     }
-    const a = annual[y]; const bw = (RW - 44) * a.t / amax;
-    svg += `<rect x="${W - RW + 4}" y="${yy + 3}" width="${bw}" height="${ch - 6}" fill="${a.ok ? '#8a96a5' : '#c9d1da'}"/><text x="${W - RW + 8 + bw}" y="${yy + ch - 4}" font-size="10" fill="#4a5563">${a.t ? (a.t >= 1e4 ? Math.round(a.t / 1e3) + 'k' : fmt(a.t)) : ''}${a.ok ? '' : '*'}</text>`;
+    const a = annual[y], bw = Math.max(1, (RW - 30) * a.t / amax);
+    g += `<rect class="ytot" x="${W - RW + 6}" y="${yy + 3}" width="${bw}" height="${ch - 6}" fill="${a.ok ? '#6d6b64' : '#3a3935'}"/><text x="${W - RW + 10 + bw}" y="${yy + ch - 3}" style="font-size:8.5px">${a.t ? kfmt(a.t) : ''}</text>`;
   }
-  const ty = top + (NY + 0.4) * (ch + gap);
-  svg += `<text x="${LW - 6}" y="${ty + ch - 4}" font-size="10.5" text-anchor="end" fill="#11161c" font-weight="600">Typical</text>`;
-  for (let j = 0; j < 12; j++) { const x = LW + j * (cw + gap), v = s.med[j]; svg += `<rect x="${x}" y="${ty}" width="${cw}" height="${ch}" rx="2" fill="${state.view === 'anom' ? '#f7f7f7' : sc.color(v)}" stroke="#11161c" stroke-width=".6"><title>Typical ${MONL[j]} (median ${Y0}–${BASE_Y1}): ${fmt(v)}</title></rect>`; if (cw > 34) svg += `<text x="${x + cw / 2}" y="${ty + ch - 4.5}" font-size="9.5" text-anchor="middle" fill="${sc.breaks.length && v > sc.breaks[3] && state.view !== 'anom' ? '#fff' : '#11161c'}" pointer-events="none">${v >= 1e4 ? Math.round(v / 1e3) + 'k' : fmt(v)}</text>`; }
-  svg += '</svg>';
-  el.innerHTML = svg;
+  const ty = top + (NYR + 0.6) * (ch + gap);
+  g += `<text x="${LW - 9}" y="${ty + ch - 3}" text-anchor="end" style="fill:var(--ink)">TYP</text>`;
+  for (let j = 0; j < 12; j++) { const x = LW + j * (cw + gap), v = s.med[j]; g += `<rect x="${x}" y="${ty}" width="${cw}" height="${ch}" rx="1" fill="${state.view === 'anom' ? '#22211e' : sc.color(v)}" stroke="#ecebe4" stroke-opacity=".5" stroke-width=".6"><title>Typical ${MONL[j]} (median ${Y0}–${BASE_Y1}): ${fmt(v)}</title></rect>`; }
+  el.innerHTML = g + '</svg>';
   // legend
   let lg = '';
-  if (state.view === 'anom') lg = DIV.map(d => `<span class="sw"><i style="background:${d.c}"></i>${d.l}</span>`).join('');
-  else { const b = [0, ...sc.breaks]; lg = `<span class="sw"><i style="background:${ZERO}"></i>0</span>` + SEQ.map((c, i) => `<span class="sw"><i style="background:${c}"></i>${i === 0 ? '1' : fmt(b[i])}${i < SEQ.length - 1 ? '–' + fmt(b[i + 1]) : '+'}</span>`).join(''); }
-  lg += `<span class="sw"><i style="background:#fd8d3c;background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.8) 0 1.5px,transparent 1.5px 4px)"></i>estimated from MODIS (before Feb 2012)</span><span class="sw"><i style="background:#fff;border:1px dashed #11161c"></i>partial month</span><span class="sw">○ record for that month</span><span class="sw">* incomplete year</span>`;
+  if (state.view === 'anom') lg = DIV.map(d => `<span class="sw"><i style="background:${d.c}"></i>${d.l}</span>`).join('') + '<span>VS TYPICAL MONTH</span>';
+  else lg = `<span class="ramp"><span class="bar" style="background:${GRAD}"></span><span class="ticks"><span>${fmt(sc.q(0))}</span><span>${kfmt(sc.q(.5))}</span><span>${kfmt(sc.q(1))}</span></span></span><span>HOTSPOTS / MONTH</span>`;
+  lg += `<span class="sw"><i style="background:#cc3d10;background-image:repeating-linear-gradient(45deg,rgba(11,11,10,.6) 0 1.4px,transparent 1.4px 4px)"></i>MODIS EST.</span><span class="sw"><i style="background:${SENSCOL[1]};width:2px"></i><i style="background:${SENSCOL[2]};width:2px"></i><i style="background:${SENSCOL[3]};width:2px"></i>SENSOR</span><span class="sw"><i style="background:#ecebe4;width:5px;height:5px;border-radius:50%"></i>RECORD</span>`;
   $('#calLegend').innerHTML = lg;
-  wireGrid(el.querySelector('svg'));
+  wireGrid(el.querySelector('svg'), ch, top, gap);
+  const sel = $(`#calendar .cell[data-m="${state.m}"]`); if (sel) sel.classList.add('sel');
 }
-function wireGrid(svg) {
-  svg.addEventListener('mousemove', e => { const t = e.target.closest('.cell'); if (t) showTip(cellTip(+t.dataset.m), e); else hideTip(); });
-  svg.addEventListener('mouseleave', hideTip);
-  svg.addEventListener('click', e => { const t = e.target.closest('.cell'); if (t) selectMonth(+t.dataset.m); });
+function wireGrid(svg, ch, top, gap) {
+  const hl = svg.querySelector('#rowhl');
+  svg.addEventListener('mousemove', e => { const t = e.target.closest('.cell'); if (t) { const m = +t.dataset.m; showTip(cellTip(m), e); hl.setAttribute('y', top + Math.floor(m / 12) * (ch + gap) - 1); hl.setAttribute('visibility', 'visible'); } else { hideTip(); hl.setAttribute('visibility', 'hidden'); } });
+  svg.addEventListener('mouseleave', () => { hideTip(); hl.setAttribute('visibility', 'hidden'); });
+  svg.addEventListener('click', e => { const t = e.target.closest('.cell'); if (t) { stop(); setMonth(+t.dataset.m); } });
   svg.addEventListener('keydown', e => {
-    const t = e.target.closest('.cell'); if (!t) return; let m = +t.dataset.m;
-    const mv = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -12, ArrowDown: 12 }[e.key];
-    if (mv) { e.preventDefault(); m = Math.max(0, Math.min(NM - 1, m + mv)); const n = svg.querySelector(`.cell[data-m="${m}"]`); if (n) { t.tabIndex = -1; n.tabIndex = 0; n.focus(); const r = n.getBoundingClientRect(); showTip(cellTip(m), { clientX: r.right, clientY: r.bottom }); } }
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectMonth(m); }
+    const t = e.target.closest('.cell'); if (!t) return; let m = +t.dataset.m; const mv = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -12, ArrowDown: 12 }[e.key];
+    if (mv) { e.preventDefault(); e.stopPropagation(); m = clamp(m + mv, 0, ERA.last); const n = svg.querySelector(`.cell[data-m="${m}"]`); if (n) { t.tabIndex = -1; n.tabIndex = 0; n.focus(); setMonth(m); const r = n.getBoundingClientRect(); showTip(cellTip(m), { clientX: r.right, clientY: r.bottom }); } }
     if (e.key === 'Escape') hideTip();
   });
 }
-function selectMonth(m) { if (m > ERA.last) return; state.sel = state.sel === m ? null : m; drawCells(state.sel); $$('#calendar .cell').forEach(c => c.classList.toggle('sel', +c.dataset.m === state.sel)); }
-
 function renderWeekly() {
   const el = $('#calendar'), W8 = state.weekly;
-  if (!W8) { el.innerHTML = '<p class="hint">Weekly data is not available in this build.</p>'; return; }
-  const NWK = META.weekly.nWeeks, PER = 53, W = Math.max(520, el.clientWidth || 720), LW = 44, RW = 10, cw = (W - LW - RW) / PER, ch = 13, gap = 1.5, top = 18;
-  const H = top + NY * (ch + gap) + 4;
-  const lastW = META.weekly.lastWeek;
-  const vals = Array.from(W8).filter((v, k) => k <= lastW);
-  const sc = seqScale(vals);
-  // weekly typical: median by week-of-year over baseline years
+  if (!W8) { el.innerHTML = '<p class="note">Weekly data is not in this build.</p>'; return; }
+  const PER = 53, W = Math.max(380, el.clientWidth || 430), LW = 40, cw = (W - LW) / PER, ch = 12, gap = 1.5, top = 16, H = top + NY * (ch + gap) + 4, lastW = META.weekly.lastWeek;
+  const sc = makeScale(Array.from(W8).filter((v, k) => k <= lastW));
   const wmed = []; for (let k = 0; k < PER; k++) { const xs = []; for (let y = 0; Y0 + y <= BASE_Y1; y++) xs.push(W8[y * PER + k]); xs.sort((a, b) => a - b); wmed.push(xs[xs.length >> 1]); }
-  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Weekly burning calendar, rows are years, columns are weeks of the year">`;
-  MON.forEach((mn, j) => { const wk = Math.floor((new Date(Date.UTC(2001, j, 1)) - new Date(Date.UTC(2001, 0, 1))) / 864e5 / 7); svg += `<text x="${LW + wk * cw}" y="12" font-size="10.5" fill="#4a5563">${mn}</text>`; });
+  let g = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Weekly burning calendar: rows are years, columns are weeks."><defs><pattern id="hatchw" width="3" height="3" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="3" stroke="rgba(11,11,10,.55)" stroke-width="1"/></pattern></defs>`;
+  MON.forEach((mn, j) => { const wk = Math.floor((Date.UTC(2001, j, 1) - Date.UTC(2001, 0, 1)) / 864e5 / 7); g += `<text x="${LW + wk * cw}" y="9">${mn.toUpperCase().slice(0, 1)}</text>`; });
   for (let y = 0; y < NY; y++) {
-    const yy = top + y * (ch + gap); svg += `<text x="${LW - 6}" y="${yy + ch - 3}" font-size="10" text-anchor="end" fill="#4a5563">${Y0 + y}</text>`;
-    for (let k = 0; k < PER; k++) {
-      const idx = y * PER + k; if (idx > lastW) continue; const v = W8[idx];
-      const fill = state.view === 'anom' ? divColor(wmed[k] > 0 ? v / wmed[k] : (v > 0 ? 9 : 1)) : sc.color(v);
-      svg += `<rect class="wk" data-k="${idx}" x="${LW + k * cw}" y="${yy}" width="${Math.max(1, cw - gap)}" height="${ch}" fill="${fill}"/>`;
-      if (META.weekly.modisBefore && idx < META.weekly.modisBefore) svg += `<rect x="${LW + k * cw}" y="${yy}" width="${Math.max(1, cw - gap)}" height="${ch}" fill="url(#hatchw)" pointer-events="none"/>`;
-    }
+    const yy = top + y * (ch + gap); g += `<text x="${LW - 9}" y="${yy + ch - 3}" text-anchor="end">${Y0 + y}</text>`;
+    for (let k = 0; k < PER; k++) { const idx = y * PER + k; if (idx > lastW) continue; const v = W8[idx]; const fill = state.view === 'anom' ? divColor(wmed[k] > 0 ? v / wmed[k] : (v > 0 ? 9 : 1)) : sc.color(v);
+      g += `<rect class="wk" data-k="${idx}" x="${LW + k * cw}" y="${yy}" width="${Math.max(1, cw - 1)}" height="${ch}" fill="${fill}"/>`;
+      if (META.weekly.modisBefore && idx < META.weekly.modisBefore) g += `<rect x="${LW + k * cw}" y="${yy}" width="${Math.max(1, cw - 1)}" height="${ch}" fill="url(#hatchw)" pointer-events="none"/>`; }
   }
-  svg = svg.replace('role="img"', 'role="img"') + `<defs><pattern id="hatchw" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="4" stroke="rgba(255,255,255,.7)" stroke-width="1.2"/></pattern></defs></svg>`;
-  el.innerHTML = svg;
-  const b = [0, ...sc.breaks];
-  $('#calLegend').innerHTML = (state.view === 'anom' ? DIV.map(d => `<span class="sw"><i style="background:${d.c}"></i>${d.l}</span>`).join('') : `<span class="sw"><i style="background:${ZERO}"></i>0</span>` + SEQ.map((c, i) => `<span class="sw"><i style="background:${c}"></i>${i === 0 ? '1' : fmt(b[i])}${i < SEQ.length - 1 ? '–' + fmt(b[i + 1]) : '+'}</span>`).join('')) + `<span class="sw">Weekly view: 1° cells, weeks start 1 Jan; hatched = estimated from MODIS. Colours are relative to this area, so busy weeks stand out like a contribution graph.</span>`;
-  const svgEl = el.querySelector('svg');
-  svgEl.addEventListener('mousemove', e => { const t = e.target.closest('.wk'); if (!t) return hideTip(); const k = +t.dataset.k, y = Y0 + Math.floor(k / PER), w = k % PER; const d0 = new Date(Date.UTC(y, 0, 1 + 7 * w)), d1 = new Date(Math.min(Date.UTC(y, 11, 31), Date.UTC(y, 0, 7 + 7 * w))); showTip(`<b>${d0.getUTCDate()} ${MON[d0.getUTCMonth()]} to ${d1.getUTCDate()} ${MON[d1.getUTCMonth()]} ${y}</b><br>${fmt(W8[k])} hotspots (NOAA-20 equivalent)<br><span class="s">Typical for this week: ${fmt(wmed[w])}</span>`, e); });
-  svgEl.addEventListener('mouseleave', hideTip);
+  el.innerHTML = g + '</svg>';
+  $('#calLegend').innerHTML = (state.view === 'anom' ? DIV.map(d => `<span class="sw"><i style="background:${d.c}"></i>${d.l}</span>`).join('') : `<span class="ramp"><span class="bar" style="background:${GRAD}"></span><span class="ticks"><span>${fmt(sc.q(0))}</span><span>${kfmt(sc.q(.5))}</span><span>${kfmt(sc.q(1))}</span></span></span><span>HOTSPOTS / WEEK · 1° CELLS</span>`) + '<span>ONE ROW PER YEAR, READ LIKE A CONTRIBUTION GRAPH</span>';
+  const svg = el.querySelector('svg');
+  svg.addEventListener('mousemove', e => { const t = e.target.closest('.wk'); if (!t) return hideTip(); const k = +t.dataset.k, y = Y0 + Math.floor(k / PER), w = k % PER, d0 = new Date(Date.UTC(y, 0, 1 + 7 * w)), d1 = new Date(Math.min(Date.UTC(y, 11, 31), Date.UTC(y, 0, 7 + 7 * w))); showTip(`<div class="tt"><i style="background:${t.getAttribute('fill')}"></i>${d0.getUTCDate()} ${MON[d0.getUTCMonth()]} – ${d1.getUTCDate()} ${MON[d1.getUTCMonth()]} ${y}</div><div class="tv"><b>${fmt(W8[k])}</b> HOTSPOTS · NOAA-20 UNITS<br>TYPICAL FOR THIS WEEK ${fmt(wmed[w])}</div>`, e); });
+  svg.addEventListener('mouseleave', hideTip);
+  svg.addEventListener('click', e => { const t = e.target.closest('.wk'); if (!t) return; const k = +t.dataset.k, y = Math.floor(k / PER), w = k % PER; const d = new Date(Date.UTC(Y0 + y, 0, 1 + 7 * w)); stop(); setMonth((d.getUTCFullYear() - Y0) * 12 + d.getUTCMonth()); });
 }
-
-// ---------------- table (accessible alternative) ----------------
 function renderTable() {
-  const s = state.series; let h = '<table><caption class="hint" style="text-align:left;padding:6px">Monthly hotspots, NOAA-20 VIIRS equivalent</caption><thead><tr><th scope="col">Year</th>' + MON.map(m => `<th scope="col">${m}</th>`).join('') + '<th scope="col">Total</th></tr></thead><tbody>';
-  for (let y = 0; y < NY; y++) { let t = 0; h += `<tr><th scope="row">${Y0 + y}</th>`; for (let j = 0; j < 12; j++) { const m = y * 12 + j, v = s.H[m]; if (!isNaN(v) && m <= ERA.last) t += v; h += `<td>${m > ERA.last || isNaN(v) ? '' : fmt(v)}${srcOf(m) === 1 && m <= ERA.last ? '<sup>e</sup>' : ''}</td>`; } h += `<td>${fmt(t)}</td></tr>`; }
-  h += `<tr><th scope="row">Typical</th>${s.med.map(v => `<td><b>${fmt(v)}</b></td>`).join('')}<td></td></tr></tbody></table><p class="hint" style="padding:0 6px">e = estimated from MODIS.</p>`;
-  $('#tableWrap').innerHTML = h;
+  const s = state.series; let h = '<table><caption>Monthly hotspots in NOAA-20 VIIRS units (e = estimated from MODIS)</caption><thead><tr><th scope="col">YEAR</th>' + MON.map(m => `<th scope="col">${m.toUpperCase()}</th>`).join('') + '<th scope="col">TOTAL</th></tr></thead><tbody>';
+  for (let y = 0; y < NY; y++) { let t = 0; h += `<tr><th scope="row">${Y0 + y}</th>`; for (let j = 0; j < 12; j++) { const m = y * 12 + j, v = s.H[m]; if (!isNaN(v) && m <= ERA.last) t += v; h += `<td>${m > ERA.last || isNaN(v) ? '' : fmt(v)}${srcOf(m) === 1 && m <= ERA.last ? 'e' : ''}</td>`; } h += `<td>${fmt(t)}</td></tr>`; }
+  $('#tableWrap').innerHTML = h + `<tr><th scope="row">TYP</th>${s.med.map(v => `<td>${fmt(v)}</td>`).join('')}<td></td></tr></tbody></table>`;
 }
+function renderMapRamp() { const sc = state.cellScale; $('#mapRamp').innerHTML = `<span>HOTSPOTS PER CELL · MONTH</span><span class="bar" style="background:${GRAD}"></span><span class="ticks"><span>1</span><span>${kfmt(sc.q(.5))}</span><span>${kfmt(sc.q(.98))}+</span></span>`; }
 
-// ---------------- time series ----------------
-function renderTS() {
-  const s = state.series, el = $('#ts'), W = Math.max(520, el.clientWidth || 720), Hh = 230, L0 = 56, R0 = 10, T0 = 22, B0 = 24;
-  const n = ERA.last + 1, X = m => L0 + (W - L0 - R0) * m / (n - 1);
+// ---------------- timeline ----------------
+const TL = { W: 1000, H: 124, L: 12, R: 12, top: 26, base: 80 };
+const tx = m => TL.L + (TL.W - TL.L - TL.R) * m / ERA.last;
+function buildTimeline() {
+  const s = state.series, svg = $('#tlSvg'), box = $('#tlMain').getBoundingClientRect(); TL.W = Math.max(500, box.width - 16); TL.H = Math.max(100, box.height);
+  TL.top = 26; TL.base = TL.H - 44;
+  svg.setAttribute('viewBox', `0 0 ${TL.W} ${TL.H}`); svg.setAttribute('aria-valuemax', ERA.last);
+  const vmax = Math.max(1, ...Array.from(s.H).filter((v, m) => m <= ERA.last && !isNaN(v)));
+  const hY = v => TL.base - (TL.base - TL.top) * Math.sqrt(Math.max(0, v) / vmax);
+  const bw = Math.max(1, (TL.W - TL.L - TL.R) / (ERA.last + 1) - 0.6);
+  let g = `<defs><pattern id="hatchT" width="3" height="3" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="3" stroke="rgba(11,11,10,.6)" stroke-width="1"/></pattern></defs>`;
+  const eras = [[0, ERA.snppStart - 1, 'TERRA + AQUA MODIS · ESTIMATED', SENSCOL[1]], [ERA.snppStart, ERA.n20Start - 1, 'S-NPP VIIRS · CROSS-CAL.', SENSCOL[2]], [ERA.n20Start, ERA.last, 'NOAA-20 VIIRS · OBSERVED', SENSCOL[3]]];
+  for (const [a, b, lab] of eras) g += `<text class="era" x="${tx(a) + 2}" y="13">${lab}</text>`;
+  for (let y = 0; y <= NY; y++) { const m = y * 12; if (m > ERA.last) break; g += `<line x1="${tx(m)}" x2="${tx(m)}" y1="${TL.base}" y2="${TL.base + (y % 5 === 0 ? 6 : 3)}" stroke="#3a3935"/>`; if (y % 5 === 0) g += `<text x="${tx(m)}" y="${TL.H - 6}" text-anchor="middle">${Y0 + y}</text>`; }
+  g += `<g id="tlBars">`;
+  for (let m = 0; m <= ERA.last; m++) { const v = s.H[m]; if (isNaN(v)) continue; const y0 = hY(v), src = srcOf(m); const col = src === 3 ? '#ff6a2b' : src === 2 ? '#d9531f' : '#b5471c';
+    g += `<rect class="tb" data-m="${m}" x="${tx(m) - bw / 2}" y="${y0}" width="${bw}" height="${Math.max(0.5, TL.base - y0)}" fill="${col}"/>`;
+    if (src === 1) g += `<rect x="${tx(m) - bw / 2}" y="${y0}" width="${bw}" height="${Math.max(0.5, TL.base - y0)}" fill="url(#hatchT)" pointer-events="none"/>`; }
+  g += `</g>`;
+  // naive stitch overlay (raw counts as they come from each sensor)
   const modisAvg = m => { const k = AV[0][m] + AV[1][m]; return k ? (s.T[m] + s.A[m]) / k : NaN; };
-  const lines = [];
-  if (state.ts.harm) lines.push({ c: '#b10026', w: 2, v: m => s.H[m] });
-  if (state.ts.modis) lines.push({ c: '#6b7685', w: 1.2, d: '4 3', v: m => modisAvg(m) });
-  if (state.ts.snpp) lines.push({ c: '#0b5cad', w: 1.1, v: m => AV[2][m] ? s.SN[m] : NaN });
-  if (state.ts.n20) lines.push({ c: '#0f8a7e', w: 1.1, v: m => AV[3][m] ? s.N2[m] : NaN });
-  let ymax = 1; for (let m = 0; m < n; m++) { for (const l of lines) { const v = l.v(m); if (v > ymax) ymax = v; } if (state.ts.harm && srcOf(m) !== 3) { const b = band(m, s.H[m]); if (b[1] > ymax && b[1] < 3 * ymax) ymax = b[1]; } }
-  ymax *= 1.05; const Y = v => T0 + (Hh - T0 - B0) * (1 - v / ymax);
-  let svg = `<svg viewBox="0 0 ${W} ${Hh}" role="img" aria-label="Monthly time series of harmonized and raw sensor hotspot counts">`;
-  const eras = [[0, ERA.snppStart, '#fff4e0', 'MODIS era · estimated'], [ERA.snppStart, ERA.n20Start, '#eaf2fb', 'S-NPP era · cross-calibrated'], [ERA.n20Start, n, '#e8f6f3', 'NOAA-20 era · observed']];
-  for (const [a, b, c, t] of eras) { svg += `<rect x="${X(a)}" y="${T0}" width="${X(Math.min(b, n - 1)) - X(a)}" height="${Hh - T0 - B0}" fill="${c}"/><text x="${X(a) + 4}" y="${T0 - 6}" font-size="10.5" fill="#4a5563">${t}</text>`; }
-  for (let i = 0; i <= 4; i++) { const v = ymax * i / 4; svg += `<line x1="${L0}" x2="${W - R0}" y1="${Y(v)}" y2="${Y(v)}" stroke="#e3e7ec"/><text x="${L0 - 6}" y="${Y(v) + 4}" font-size="10" text-anchor="end" fill="#6b7685">${v >= 1e4 ? Math.round(v / 1e3) + 'k' : fmt(v)}</text>`; }
-  for (let y = 0; y < NY; y += 5) svg += `<text x="${X(y * 12)}" y="${Hh - 6}" font-size="10" fill="#6b7685">${Y0 + y}</text>`;
-  if (state.ts.harm) { let up = '', dn = ''; for (let m = 0; m < ERA.snppStart; m++) { const [lo, hi] = band(m, s.H[m]); up += `${X(m)},${Y(Math.min(hi, ymax))} `; dn = `${X(m)},${Y(lo)} ` + dn; } svg += `<polygon points="${up}${dn}" fill="rgba(177,0,38,.16)"/>`; }
-  for (const l of lines) { let d = '', pen = false; for (let m = 0; m < n; m++) { const v = l.v(m); if (isNaN(v)) { pen = false; continue; } d += (pen ? 'L' : 'M') + X(m).toFixed(1) + ' ' + Y(v).toFixed(1); pen = true; } svg += `<path d="${d}" fill="none" stroke="${l.c}" stroke-width="${l.w}" ${l.d ? `stroke-dasharray="${l.d}"` : ''}/>`; }
-  svg += `<line id="tsx" x1="0" x2="0" y1="${T0}" y2="${Hh - B0}" stroke="#11161c" stroke-width=".8" visibility="hidden"/><rect id="tshit" x="${L0}" y="${T0}" width="${W - L0 - R0}" height="${Hh - T0 - B0}" fill="transparent"/></svg>`;
-  el.innerHTML = svg;
-  const sv = el.querySelector('svg'), hit = sv.querySelector('#tshit'), xl = sv.querySelector('#tsx');
-  hit.addEventListener('mousemove', e => { const r = sv.getBoundingClientRect(); const px = (e.clientX - r.left) * W / r.width; const m = Math.max(0, Math.min(n - 1, Math.round((px - L0) / (W - L0 - R0) * (n - 1)))); xl.setAttribute('x1', X(m)); xl.setAttribute('x2', X(m)); xl.setAttribute('visibility', 'visible'); showTip(cellTip(m) + `<br><span class="s">MODIS per-satellite average: ${fmt(modisAvg(m))}</span>`, e); });
-  hit.addEventListener('mouseleave', () => { hideTip(); xl.setAttribute('visibility', 'hidden'); });
-  hit.addEventListener('click', e => { const r = sv.getBoundingClientRect(); const px = (e.clientX - r.left) * W / r.width; selectMonth(Math.max(0, Math.min(n - 1, Math.round((px - L0) / (W - L0 - R0) * (n - 1))))); });
-  const gk = META.globalK; $('#tsCaption').textContent = `Dashed grey is raw MODIS (average per satellite). Worldwide, S-NPP VIIRS records about ${gk.aqua.toFixed(0)}× as many hotspots as Aqua MODIS and ${gk.terra.toFixed(0)}× as many as Terra MODIS in the same months, so naively stitching the two records creates a false jump in 2012. The red line is the harmonized record; the shaded band is the 80% uncertainty of the MODIS-based estimate, measured on held-out years.`;
+  let d = '', pen = false; for (let m = 0; m <= ERA.last; m++) { const v = m >= ERA.n20Start ? s.N2[m] : m >= ERA.snppStart ? s.SN[m] : modisAvg(m); if (isNaN(v)) { pen = false; continue; } d += (pen ? 'L' : 'M') + tx(m).toFixed(1) + ' ' + hY(v).toFixed(1); pen = true; }
+  g += `<path id="tlCmp" d="${d}" fill="none" stroke="#5b8fd9" stroke-width="1.2" visibility="${state.cmp ? 'visible' : 'hidden'}"/>`;
+  // relay track
+  const ry = TL.base + 14;
+  for (const [a, b, , col] of eras) g += `<line x1="${tx(a)}" x2="${tx(b)}" y1="${ry}" y2="${ry}" stroke="${col}" stroke-width="3"/>`;
+  for (const m of [ERA.snppStart, ERA.n20Start]) { const [y, mo] = ym(m); g += `<rect x="${tx(m) - 4}" y="${ry - 4}" width="8" height="8" transform="rotate(45 ${tx(m)} ${ry})" fill="#0b0b0a" stroke="#ecebe4"/><text class="ho" x="${tx(m) + 8}" y="${ry - 6}" style="fill:var(--ink2);font-size:8.5px">HANDOVER ${String(mo + 1).padStart(2, '0')}·${y}</text>`; }
+  g += `<line x1="${TL.L}" x2="${TL.W - TL.R}" y1="${TL.base}" y2="${TL.base}" stroke="#2b2a27"/>`;
+  g += `<g id="tlHead" class="tl-head"><line x1="0" x2="0" y1="${TL.top - 6}" y2="${TL.base + 20}" stroke="#ffb547" stroke-width="1.2"/><path d="M-5 ${TL.top - 12} h10 v6 l-5 5 l-5 -5z" fill="#ffb547"/></g>`;
+  g += `<rect id="tlHit" x="0" y="0" width="${TL.W}" height="${TL.H}" fill="transparent"/>`;
+  svg.innerHTML = g;
+  TL.bars = [...svg.querySelectorAll('#tlBars .tb')];
+  updateTimeline();
 }
-function initToggles() {
-  const defs = [['harm', 'Harmonized (NOAA-20 equivalent)', '#b10026'], ['modis', 'Raw MODIS (per satellite)', '#6b7685'], ['snpp', 'Raw S-NPP VIIRS', '#0b5cad'], ['n20', 'Raw NOAA-20 VIIRS', '#0f8a7e']];
-  $('#tsToggles').innerHTML = defs.map(([k, l, c]) => `<label><input type="checkbox" data-k="${k}" ${state.ts[k] ? 'checked' : ''}><i style="background:${c}"></i>${l}</label>`).join('');
-  $$('#tsToggles input').forEach(i => i.onchange = () => { state.ts[i.dataset.k] = i.checked; renderTS(); });
+function updateTimeline() {
+  const s = state.series; if (!s || !TL.bars) return; const m = state.m, [y, mo] = ym(m), v = s.H[m], md = s.med[mo];
+  $('#tlHead').setAttribute('transform', `translate(${tx(m)},0)`);
+  for (const b of TL.bars) b.classList.toggle('future', state.playing && +b.dataset.m > m);
+  $('#tlDate').innerHTML = `${MON[mo]} ${y}<small>${m === PARTIAL ? 'SO FAR' : ''}</small>`;
+  $('#tlVal').innerHTML = `${fmt(v)} HOTSPOTS · <span class="${md > 0 && v / md >= 1.25 ? 'hot' : ''}">${md > 0 ? xfmt(v / md) + '× TYPICAL' : '–'}</span>`;
+  $('#tlSvg').setAttribute('aria-valuenow', m); $('#tlSvg').setAttribute('aria-valuetext', `${MONL[mo]} ${y}`);
 }
+function tlMonthAt(ev) { const svg = $('#tlSvg'), r = svg.getBoundingClientRect(); const px = (ev.clientX - r.left) * TL.W / r.width; return clamp(Math.round((px - TL.L) / (TL.W - TL.L - TL.R) * ERA.last), 0, ERA.last); }
+let dragging = false;
+$('#tlSvg').addEventListener('pointerdown', e => { dragging = true; stop(); $('#tlSvg').setPointerCapture(e.pointerId); setMonth(tlMonthAt(e)); });
+$('#tlSvg').addEventListener('pointermove', e => { if (dragging) setMonth(tlMonthAt(e)); else { const m = tlMonthAt(e); showTip(cellTip(m), e); } });
+$('#tlSvg').addEventListener('pointerup', () => { dragging = false; });
+$('#tlSvg').addEventListener('pointerleave', hideTip);
+$('#tlSvg').addEventListener('keydown', e => { const mv = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: 12, ArrowDown: -12, Home: -1e4, End: 1e4 }[e.key]; if (mv) { e.preventDefault(); stop(); setMonth(state.m + mv); } });
 
-// ---------------- downloads & sharing ----------------
+// ---------------- playback ----------------
+let raf = 0, last = 0;
+function play(endAt = ERA.last) {
+  if (!state.series) return; if (state.m >= endAt) setMonth(0); state.endAt = endAt;
+  state.playing = true; $('#play').classList.add('on'); $('#playIcon').setAttribute('d', 'M4 2.5h3v11H4zM9 2.5h3v11H9z'); $('#play').setAttribute('aria-label', 'Pause');
+  last = performance.now(); const tick = now => { if (!state.playing) return; if (now - last >= 1000 / state.speed) { last = now; if (state.m >= state.endAt) { stop(); return; } setMonth(state.m + 1); } raf = requestAnimationFrame(tick); }; raf = requestAnimationFrame(tick);
+}
+function stop() { if (!state.playing) return; state.playing = false; cancelAnimationFrame(raf); $('#play').classList.remove('on'); $('#playIcon').setAttribute('d', 'M4 2.5v11l9-5.5z'); $('#play').setAttribute('aria-label', 'Play the record month by month'); updateTimeline(); renderNarration(); }
+$('#play').onclick = () => state.playing ? stop() : play();
+let introOn = false;
+async function intro() {
+  const sp = state.speed; introOn = true; state.speed = 30; setMonth(0, { force: true });
+  const cancel = () => { if (introOn) { introOn = false; stop(); state.speed = sp; } };
+  ['pointerdown', 'keydown', 'wheel'].forEach(ev => window.addEventListener(ev, cancel, { once: true, capture: true }));
+  await new Promise(r => setTimeout(r, 700)); if (!introOn) return;
+  play(LASTFULL); const iv = setInterval(() => { if (!state.playing) { introOn = false; state.speed = sp; clearInterval(iv); } }, 200);
+}
+$$('.speed button').forEach(b => b.onclick = () => { state.speed = +b.dataset.sp; $$('.speed button').forEach(x => x.setAttribute('aria-checked', String(x === b))); });
+$('#cmpBtn').onclick = () => { state.cmp = !state.cmp; $('#cmpBtn').setAttribute('aria-pressed', String(state.cmp)); const p = $('#tlCmp'); if (p) p.setAttribute('visibility', state.cmp ? 'visible' : 'hidden'); };
+document.addEventListener('keydown', e => {
+  if (e.target.closest('input, textarea, [contenteditable]')) return;
+  if (e.code === 'Space') { e.preventDefault(); state.playing ? stop() : play(); }
+  else if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && !e.target.closest('svg')) { e.preventDefault(); stop(); setMonth(state.m + (e.key === 'ArrowRight' ? 1 : -1)); }
+});
+
+// ---------------- downloads & links ----------------
 function download(name, text, type) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500); }
 const slug = s => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 $('#dlCsv').onclick = () => {
   const s = state.series, a = state.aoi; if (!s) return;
-  const rows = [`# FireRelay harmonized burning calendar · ${a.name}`, `# Units: active-fire hotspots in NOAA-20 VIIRS 375 m equivalent (nominal+high confidence, presumed vegetation fires, FIRMS type 0)`, `# Source data: NASA FIRMS standard archive (MODIS C6.1, VIIRS S-NPP/NOAA-20 375 m) + near-real-time for the latest months; built ${META.built.slice(0, 10)}; data through ${META.lastDate || ''}`, `# lower80/upper80: 80% uncertainty from hold-out validation (MODIS era) or S-NPP to NOAA-20 cross-calibration; 0.25 deg cells weighted by fraction inside area`, `# Method and validation: see method.html`,
+  const rows = [`# FireRelay harmonized burning calendar · ${a.name}`, `# Units: active-fire hotspots in NOAA-20 VIIRS 375 m equivalent (nominal+high confidence, presumed vegetation fires, FIRMS type 0)`, `# Source data: NASA FIRMS standard archive (MODIS C6.1, VIIRS S-NPP/NOAA-20 375 m) + near-real-time for the latest months; built ${META.built.slice(0, 10)}; data through ${META.lastDate || ''}`, `# lower80/upper80: 80% uncertainty from hold-out validation (MODIS era) or S-NPP to NOAA-20 cross-calibration; 0.25 deg cells weighted by fraction inside area`, `# Method and validation: https://firerelay.vercel.app/method.html`,
     'year,month,hotspots_harmonized,lower80,upper80,source,partial_month,raw_terra_modis,raw_aqua_modis,raw_snpp_viirs,raw_noaa20_viirs,typical_median,ratio_to_typical,rank_among_same_month,years_ranked'];
   for (let m = 0; m <= ERA.last; m++) { const [y, j] = ym(m), v = s.H[m]; if (isNaN(v)) continue; const [lo, hi] = band(m, v); rows.push([y, j + 1, v.toFixed(1), lo.toFixed(1), hi.toFixed(1), ['', 'modis_estimate', 'snpp_crosscal', 'noaa20_observed'][srcOf(m)], m === PARTIAL ? 1 : 0, s.T[m].toFixed(1), s.A[m].toFixed(1), AV[2][m] ? s.SN[m].toFixed(1) : '', AV[3][m] ? s.N2[m].toFixed(1) : '', s.med[j].toFixed(1), s.med[j] > 0 ? (v / s.med[j]).toFixed(3) : '', s.rank[m] ?? '', s.nYears[j]].join(',')); }
   download(`firerelay_${slug(a.name)}_monthly.csv`, rows.join('\n'), 'text/csv');
 };
 $('#dlGeo').onclick = () => { const a = state.aoi; if (a) download(`firerelay_${slug(a.name)}_area.geojson`, JSON.stringify({ type: 'Feature', properties: { name: a.name }, geometry: a.geometry }), 'application/geo+json'); };
-$('#share').onclick = async () => { writeHash(); try { await navigator.clipboard.writeText(location.href); $('#share').textContent = '✓ Copied'; } catch { prompt('Copy this link', location.href); } setTimeout(() => $('#share').textContent = '🔗 Link', 1500); };
+$('#share').onclick = async () => { writeHash(); try { await navigator.clipboard.writeText(location.href); $('#share').textContent = '✓ COPIED'; } catch { prompt('Copy this link', location.href); } setTimeout(() => $('#share').textContent = '↗ LINK', 1500); };
 function writeHash() {
   const a = state.aoi; if (!a) return; let h = '';
   if (a.kind === 'preset') h = 'p=' + a.id; else if (a.kind === 'circle') h = `c=${a.lat.toFixed(3)},${a.lon.toFixed(3)},${a.km}`; else if (a.kind === 'box') h = 'b=' + a.box.map(v => v.toFixed(3)).join(','); else h = 'g=' + a.geometry.coordinates[0].map(([x, y]) => x.toFixed(3) + ',' + y.toFixed(3)).join(';');
   h += `&v=${state.view}&s=${state.step}`; history.replaceState(null, '', '#' + h);
 }
+const presetAOI = p => ({ kind: 'preset', id: p.id, name: p.name, note: p.note, geometry: p.geometry });
+const circleAOI = (lat, lon, km) => ({ kind: 'circle', id: 'circle', lat, lon, km, name: `${km} km around ${lat.toFixed(2)}, ${lon.toFixed(2)}`, geometry: circlePoly(lat, lon, km) });
+const boxAOI = (w, s, e, n) => ({ kind: 'box', id: 'box', box: [w, s, e, n], name: `Box ${w.toFixed(1)}, ${s.toFixed(1)} to ${e.toFixed(1)}, ${n.toFixed(1)}`, geometry: boxPoly(w, s, e, n) });
 function readHash() {
   const q = new URLSearchParams(location.hash.slice(1)); if (q.get('v')) setSeg('view', q.get('v')); if (q.get('s')) setSeg('step', q.get('s'));
   if (q.get('p')) { const p = PRESETS.find(x => x.id === q.get('p')); if (p) return presetAOI(p); }
@@ -385,37 +471,33 @@ function readHash() {
   if (q.get('g')) { const ring = q.get('g').split(';').map(p => p.split(',').map(Number)); return { kind: 'poly', id: 'custom', name: 'Custom area', geometry: { type: 'Polygon', coordinates: [ring] } }; }
   return null;
 }
-const presetAOI = p => ({ kind: 'preset', id: p.id, name: p.name, note: p.note, geometry: p.geometry });
-const circleAOI = (lat, lon, km) => ({ kind: 'circle', id: 'circle', lat, lon, km, name: `${km} km around ${lat.toFixed(2)}, ${lon.toFixed(2)}`, geometry: circlePoly(lat, lon, km) });
-const boxAOI = (w, s, e, n) => ({ kind: 'box', id: 'box', box: [w, s, e, n], name: `Box ${w.toFixed(1)}, ${s.toFixed(1)} to ${e.toFixed(1)}, ${n.toFixed(1)}`, geometry: boxPoly(w, s, e, n) });
 
 // ---------------- UI wiring ----------------
 function setSeg(kind, val) { state[kind] = val; $$(`.seg button[data-${kind}]`).forEach(b => b.setAttribute('aria-checked', String(b.dataset[kind] === val))); }
 $$('.seg button[data-view]').forEach(b => b.onclick = () => { setSeg('view', b.dataset.view); if (state.series) { renderCalendar(); writeHash(); } });
 $$('.seg button[data-step]').forEach(b => b.onclick = () => { setSeg('step', b.dataset.step); if (state.series) { renderCalendar(); writeHash(); } });
-$('#tableBtn').onclick = () => { const w = $('#tableWrap'); w.hidden = !w.hidden; $('#tableBtn').setAttribute('aria-expanded', String(!w.hidden)); $('#tableBtn').textContent = w.hidden ? 'Show as table' : 'Hide table'; if (!w.hidden) renderTable(); };
+$('#tableBtn').onclick = () => { const w = $('#tableWrap'); w.hidden = !w.hidden; $('#tableBtn').setAttribute('aria-expanded', String(!w.hidden)); if (!w.hidden) renderTable(); };
 $$('.tabs button').forEach(b => b.onclick = () => { $$('.tabs button').forEach(x => x.setAttribute('aria-selected', String(x === b))); $$('.tabpanel').forEach(p => p.hidden = p.id !== 'tab-' + b.dataset.tab); });
-// presets
-const groups = [...new Set(PRESETS.map(p => p.group))];
-$('#presetList').innerHTML = groups.map(g => `<div><h3>${esc(g)}</h3><div class="chips">${PRESETS.filter(p => p.group === g).map(p => `<button class="chip" data-preset="${p.id}" title="${esc(p.note)}">${esc(p.name)}</button>`).join('')}</div></div>`).join('');
-$('#quickStart').innerHTML = ['riau', 'central-kalimantan', 'cordoba', 'california'].map(id => { const p = PRESETS.find(x => x.id === id); return p ? `<button class="chip" data-preset="${p.id}">${esc(p.name)}</button>` : ''; }).join('');
+const groups = [...new Set(PRESETS.map(p => p.group))]; let gi = 0;
+$('#presetList').innerHTML = groups.map(g => `<h3>${esc(g.replace('(', '· ').replace(')', ''))}</h3>` + PRESETS.map((p, i) => [p, i]).filter(([p]) => p.group === g).map(([p, i]) => `<button class="file" style="--i:${gi++}" data-preset="${p.id}" aria-pressed="false" title="${esc(p.note)}"><span class="n">${String(i + 1).padStart(2, '0')}</span><span class="t">${esc(p.name)}</span></button>`).join('')).join('');
 document.addEventListener('click', e => { const b = e.target.closest('[data-preset]'); if (b) { const p = PRESETS.find(x => x.id === b.dataset.preset); if (p) setAOI(presetAOI(p)); } });
 $('#pointForm').onsubmit = e => { e.preventDefault(); setAOI(circleAOI(+$('#inLat').value, +$('#inLon').value, +$('#inRad').value)); };
-$('#boxForm').onsubmit = e => { e.preventDefault(); const w = +$('#inW').value, s = +$('#inS').value, ee = +$('#inE').value, n = +$('#inN').value; if (ee <= w || n <= s) return alert('East must be greater than West and North greater than South.'); setAOI(boxAOI(w, s, ee, n)); };
-// drawing
+$('#boxForm').onsubmit = e => { e.preventDefault(); const w = +$('#inW').value, s = +$('#inS').value, ee = +$('#inE').value, n = +$('#inN').value; if (ee <= w || n <= s) return alert('East must be greater than West, and North greater than South.'); setAOI(boxAOI(w, s, ee, n)); };
 let mode = null, start = null, temp = null, pts = [];
 function endDraw() { mode = null; map.dragging.enable(); map.doubleClickZoom.enable(); map.getContainer().classList.remove('fb-draw'); $('#drawRect').classList.remove('active'); $('#drawPoly').classList.remove('active'); }
-$('#drawRect').onclick = () => { endDraw(); mode = 'rect'; map.dragging.disable(); map.getContainer().classList.add('fb-draw'); $('#drawRect').classList.add('active'); $('#drawHint').textContent = 'Press and drag on the map to draw a rectangle.'; };
-$('#drawPoly').onclick = () => { endDraw(); mode = 'poly'; pts = []; map.doubleClickZoom.disable(); map.getContainer().classList.add('fb-draw'); $('#drawPoly').classList.add('active'); $('#drawHint').textContent = 'Click to add corners; double-click to finish.'; };
+$('#drawRect').onclick = () => { endDraw(); mode = 'rect'; map.dragging.disable(); map.getContainer().classList.add('fb-draw'); $('#drawRect').classList.add('active'); $('#drawHint').textContent = 'Press and drag on the map.'; };
+$('#drawPoly').onclick = () => { endDraw(); mode = 'poly'; pts = []; map.doubleClickZoom.disable(); map.getContainer().classList.add('fb-draw'); $('#drawPoly').classList.add('active'); $('#drawHint').textContent = 'Click each corner; double-click to finish.'; };
 $('#drawClear').onclick = () => { endDraw(); drawLayer.clearLayers(); };
-map.on('mousedown', e => { if (mode !== 'rect') return; start = e.latlng; temp = L.rectangle([start, start], { color: '#ffdd57', weight: 2, fillOpacity: 0.1 }).addTo(drawLayer); });
+const DRAWSTYLE = { color: '#ffb547', weight: 1.4, fillOpacity: 0.06, dashArray: '3 4' };
+map.on('mousedown', e => { if (mode !== 'rect') return; start = e.latlng; temp = L.rectangle([start, start], DRAWSTYLE).addTo(drawLayer); });
 map.on('mousemove', e => { if (mode === 'rect' && start && temp) temp.setBounds([start, e.latlng]); if (mode === 'poly' && pts.length && temp) temp.setLatLngs([...pts, e.latlng]); });
 map.on('mouseup', e => { if (mode !== 'rect' || !start) return; const b = L.latLngBounds(start, e.latlng); start = null; endDraw(); if (Math.abs(b.getEast() - b.getWest()) < 0.2 || Math.abs(b.getNorth() - b.getSouth()) < 0.2) { drawLayer.clearLayers(); $('#drawHint').textContent = 'Too small: draw at least about 25 km across.'; return; } setAOI({ ...boxAOI(b.getWest(), b.getSouth(), b.getEast(), b.getNorth()), name: 'Drawn rectangle' }); });
-map.on('click', e => { if (mode !== 'poly') return; pts.push(e.latlng); if (!temp) temp = L.polyline(pts, { color: '#ffdd57', weight: 2 }).addTo(drawLayer); else temp.setLatLngs(pts); });
-map.on('dblclick', e => { if (mode !== 'poly') return; endDraw(); if (pts.length < 3) return; const ring = pts.map(p => [p.lng, p.lat]); ring.push(ring[0]); temp = null; setAOI({ kind: 'poly', id: 'custom', name: 'Drawn polygon', geometry: { type: 'Polygon', coordinates: [ring] } }); pts = []; });
+map.on('click', e => { if (mode !== 'poly') return; pts.push(e.latlng); if (!temp) temp = L.polyline(pts, DRAWSTYLE).addTo(drawLayer); else temp.setLatLngs(pts); });
+map.on('dblclick', () => { if (mode !== 'poly') return; endDraw(); if (pts.length < 3) return; const ring = pts.map(p => [p.lng, p.lat]); ring.push(ring[0]); temp = null; setAOI({ kind: 'poly', id: 'custom', name: 'Drawn polygon', geometry: { type: 'Polygon', coordinates: [ring] } }); pts = []; });
 
-initToggles();
-let rz; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (state.series) { renderCalendar(); renderTS(); } }, 150); });
-const fromHash = readHash();
-setAOI(fromHash || presetAOI(PRESETS.find(p => p.id === 'riau') || PRESETS[0]), { push: !!fromHash });
+let rz; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { map.invalidateSize(); if (state.series) { renderCalendar(); buildTimeline(); } }, 150); });
 window.addEventListener('hashchange', () => { const a = readHash(); if (a && (!state.aoi || JSON.stringify(a.geometry) !== JSON.stringify(state.aoi.geometry))) setAOI(a, { push: false }); else if (state.series) renderCalendar(); });
+setTimeout(() => map.invalidateSize(), 50);
+const fromHash = readHash();
+setAOI(fromHash || presetAOI(PRESETS.find(p => p.id === 'central-kalimantan') || PRESETS[0]), { push: !!fromHash }).then(() => { if (!fromHash && !/nointro/.test(location.search)) setTimeout(intro, 1400); });
+window.__fr = { state, setMonth, play, stop };
