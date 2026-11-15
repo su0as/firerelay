@@ -1,0 +1,136 @@
+{
+ "month": 309,
+ "note": "Harmonized hotspots per 5 degree region for the latest full month vs the median of the same month 2001-2025. Regions with at least 800 hotspots now and 80 typically. Computed from the app tiles.",
+ "items": [
+  {
+   "name": "Central Kalimantan, Indonesia",
+   "box": [
+    110,
+    -5,
+    115,
+    0
+   ],
+   "now": 83649,
+   "typical": 5181,
+   "ratio": 16.1,
+   "rank": 3
+  },
+  {
+   "name": "Southern New Guinea (Western Province, PNG)",
+   "box": [
+    140,
+    -10,
+    145,
+    -5
+   ],
+   "now": 59202,
+   "typical": 3727,
+   "ratio": 15.9,
+   "rank": 1
+  },
+  {
+   "name": "Bangka-Belitung and South Sumatra coast",
+   "box": [
+    105,
+    -5,
+    110,
+    0
+   ],
+   "now": 18809,
+   "typical": 1229,
+   "ratio": 15.3,
+   "rank": 4
+  },
+  {
+   "name": "Jonglei, South Sudan",
+   "box": [
+    30,
+    5,
+    35,
+    10
+   ],
+   "now": 12442,
+   "typical": 1114,
+   "ratio": 11.2,
+   "rank": 1
+  },
+  {
+   "name": "South Papua, Indonesia",
+   "box": [
+    135,
+    -10,
+    140,
+    -5
+   ],
+   "now": 13673,
+   "typical": 1525,
+   "ratio": 9,
+   "rank": 2
+  },
+  {
+   "name": "Aru and Tanimbar Islands, Indonesia",
+   "box": [
+    130,
+    -10,
+    135,
+    -5
+   ],
+   "now": 6685,
+   "typical": 401,
+   "ratio": 16.7,
+   "rank": 1
+  },
+  {
+   "name": "North Maluku, Indonesia",
+   "box": [
+    125,
+    0,
+    130,
+    5
+   ],
+   "now": 3260,
+   "typical": 106,
+   "ratio": 30.8,
+   "rank": 2
+  },
+  {
+   "name": "Katsina, Nigeria",
+   "box": [
+    5,
+    10,
+    10,
+    15
+   ],
+   "now": 2964,
+   "typical": 99,
+   "ratio": 30,
+   "rank": 1
+  },
+  {
+   "name": "Dornod, Mongolia",
+   "box": [
+    115,
+    45,
+    120,
+    50
+   ],
+   "now": 4929,
+   "typical": 170,
+   "ratio": 29,
+   "rank": 2
+  },
+  {
+   "name": "Madhya Pradesh, India",
+   "box": [
+    75,
+    20,
+    80,
+    25
+   ],
+   "now": 2852,
+   "typical": 199,
+   "ratio": 14.4,
+   "rank": 1
+  }
+ ]
+}
