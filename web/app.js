@@ -248,6 +248,7 @@ async function renderNow() {
     html += `<span>LATEST WEEK · ${f(d0)}–${f(d1)} · <b>${fmt(v)}</b> HOTSPOTS${isFinite(r) ? ` · <b class="${r >= 1.5 ? 'hot' : ''}">${r >= 10 ? Math.round(r) : r.toFixed(1)}×</b> A TYPICAL WEEK` : ''}</span>`; }
   const pi = PRESETS.findIndex(p => p.id === state.aoi.id); const haze = pi >= 0 && /haze/i.test(PRESETS[pi].group);
   if (haze) { try { if (!PM) PM = await (await fetch('https://api.data.gov.sg/v1/environment/pm25')).json(); const it = PM.items[0], rd = it.readings.pm25_one_hourly, mx = Math.max(...Object.values(rd)); const band = mx <= 55 ? ['NORMAL', 'ok'] : mx <= 150 ? ['ELEVATED', 'hot'] : mx <= 250 ? ['HIGH', 'hot'] : ['VERY HIGH', 'hot'];
+      try { const w = await (await fetch('https://api.open-meteo.com/v1/forecast?latitude=1.35&longitude=103.82&current=wind_speed_10m,wind_direction_10m')).json(); const d = w.current.wind_direction_10m, sp = w.current.wind_speed_10m; const cmp = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(d / 45) % 8]; const fromS = d >= 200 && d <= 290, fromB = d >= 90 && d < 200; html += `<span>WIND AT SINGAPORE · FROM ${cmp} ${Math.round(sp)} KM/H · <b class="${(fromS || fromB) && sp >= 5 ? 'hot' : 'ok'}">${sp < 5 ? 'NEAR CALM' : fromS ? 'CAN CARRY SMOKE FROM SUMATRA' : fromB ? 'CAN CARRY SMOKE FROM BORNEO' : 'NOT FROM THE FIRE REGIONS'}</b></span>`; } catch (e) {}
       html += `<span><i class="live"></i>SINGAPORE PM2.5 NOW · <b>${mx}</b> <span style="text-transform:none">µg/m³</span> MAX · <b class="${band[1]}">${band[0]}</b> · NEA LATEST HOURLY</span>`; } catch (e) {} }
   el.innerHTML = html;
 }
@@ -261,7 +262,7 @@ async function renderChecks(seq) {
   const nxt = [1, 2, 3].map(k => (LASTFULL + k) % 12); const tot = nxt.reduce((a, j) => a + (s.med[j] || 0), 0), yrTot = s.med.reduce((a, v) => a + (v || 0), 0);
   const MN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   $('#ckOut').textContent = `≈ ${fmt(tot)}`; $('#ckOutD').textContent = `Typical ${MN[nxt[0]]}–${MN[nxt[2]]} total, ${yrTot ? Math.round(100 * tot / yrTot) : 0}% of a usual year. History, not a forecast.`;
-  renderNow();
+  renderNow(); renderFour();
   $('#ckErr').textContent = '…'; $('#ckErrD').textContent = 'Loading the hold-out test…';
   const H = await loadHold(); if (seq !== aoiSeq) return;
   const bw = new Map(); for (const [c, w] of state.cells) { const r = Math.floor(c / 1440), cc = c % 1440; const b = Math.floor(r / 4) * 360 + Math.floor(cc / 4); bw.set(b, (bw.get(b) || 0) + w / 16); }
@@ -285,7 +286,7 @@ function setMonth(m, { force = false } = {}) {
   const cells = []; let best = null;
   for (const [c, w, cell] of s.used) { const v = cell ? w * harmCell(cell, m) : 0; const t = state.cellScale.t(v); cells.push({ c, t }); if (v > 0 && (!best || v > best.v)) best = { c, v }; }
   heat.setData({ cells, est });
-  if (best && best.v >= 1) { const r = Math.floor(best.c / 1440), cc = best.c % 1440, ll = [r * 0.25 - 90 + 0.125, cc * 0.25 - 180 + 0.125]; peak.setLatLng(ll); if (!map.hasLayer(peak)) peak.addTo(map); const el = peak.getElement(), b = el && el.querySelector('b'); if (b) { b.textContent = `PEAK CELL ${fmt(best.v)}`; const px = map.latLngToContainerPoint(ll).x; el.querySelector('.pulse').classList.toggle('left', px > map.getSize().x - 170); } } else map.removeLayer(peak);
+  if (best && best.v >= 1) { const r = Math.floor(best.c / 1440), cc = best.c % 1440, ll = [r * 0.25 - 90 + 0.125, cc * 0.25 - 180 + 0.125]; peak.setLatLng(ll); if (!map.hasLayer(peak)) peak.addTo(map); const el = peak.getElement(), b = el && el.querySelector('b'); if (b) { b.textContent = `PEAK CELL ${fmt(best.v)}`; const px = map.latLngToContainerPoint(ll).x; flipPeak(); } } else map.removeLayer(peak);
   const [y, mo] = ym(m);
   $('#mapK1').textContent = `${MON[mo].toUpperCase()} ${y}`; $('#mapK2').textContent = SRCNAME[srcOf(m)] || '';
   // calendar highlight
@@ -308,10 +309,11 @@ function narrationFor(m) {
   if (r <= 0.8) return `Quieter than usual: ${xfmt(r)}× a typical ${MONL[mo]}.`;
   return `Close to a typical ${MONL[mo]} for this area.`;
 }
+function statusOf(m) { const s = state.series, mo = m % 12, v = s.H[m], md = s.med[mo], rk = s.rank[m]; if (isNaN(v)) return ['NO DATA', 'nd']; if (m === PARTIAL) return ['SO FAR', 'nd']; if (md < 3 && v < 3) return ['QUIET', 'lo']; const r = md > 0 ? v / md : 9; if (rk === 1 && r >= 1.25) return ['RECORD', 'rec']; if (r >= 4 || (rk && rk <= 3 && r >= 1.5)) return ['VERY HIGH', 'vh']; if (r >= 1.5) return ['HIGH', 'hi']; if (r >= 1.15) return ['ABOVE NORMAL', 'ab']; if (r <= 0.6) return ['BELOW NORMAL', 'lo']; return ['NORMAL', 'no']; }
 function renderNarration() {
   const m = state.m, [y, mo] = ym(m), s = state.series, v = s.H[m], src = srcOf(m);
   const [lo, hi] = band(m, v);
-  $('#narrT').innerHTML = `<span>${MON[mo].toUpperCase()} ${y}  ·  ${fmt(v)} HOTSPOTS${src !== 3 && !isNaN(v) ? `  ·  80% ${kfmt(lo)}–${kfmt(hi)}` : ''}</span><span class="src">${SRCSHORT[src] || ''}</span>`;
+  const st = statusOf(m); $('#narrT').innerHTML = `<span><b class="stat-chip ${st[1]}">${st[0]}</b> ${MON[mo].toUpperCase()} ${y}  ·  ${fmt(v)} HOTSPOTS${src !== 3 && !isNaN(v) ? `  ·  80% ${kfmt(lo)}–${kfmt(hi)}` : ''}</span><span class="src">${SRCSHORT[src] || ''}</span>`;
   const el = $('#narr'), txt = narrationFor(m);
   if (el.textContent !== txt) { if (state.playing) el.textContent = txt; else { el.classList.add('fade'); setTimeout(() => { el.textContent = txt; el.classList.remove('fade'); }, 140); } }
 }
@@ -498,9 +500,114 @@ document.addEventListener('keydown', e => {
   else if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && !e.target.closest('svg')) { e.preventDefault(); stop(); setMonth(state.m + (e.key === 'ArrowRight' ? 1 : -1)); }
 });
 
+// ---------------- four ways to read the record ----------------
+const FOUR = { h: true, n: true, m: false, v: false };
+function yearSeries() {
+  const s = state.series; const out = { h: [], n: [], m: [], v: [], partial: [] };
+  const modisAvg = m => { const k = AV[0][m] + AV[1][m]; return k ? (s.T[m] + s.A[m]) / k : NaN; };
+  for (let y = 0; y < NY; y++) { let h = 0, n = 0, md = 0, v = 0, hn = 0, mn = 0, vn = 0;
+    for (let j = 0; j < 12; j++) { const m = y * 12 + j; if (m > ERA.last) break; if (!isNaN(s.H[m])) { h += s.H[m]; hn++; }
+      const raw = m >= ERA.n20Start && AV[3][m] ? s.N2[m] : m >= ERA.snppStart && AV[2][m] ? s.SN[m] : modisAvg(m); if (!isNaN(raw)) n += raw;
+      const mm = modisAvg(m); if (!isNaN(mm)) { md += mm; mn++; }
+      const vv = m >= ERA.n20Start && AV[3][m] ? s.N2[m] : AV[2][m] ? s.SN[m] : NaN; if (!isNaN(vv)) { v += vv; vn++; } }
+    out.h.push(hn ? h : NaN); out.n.push(hn ? n : NaN); out.m.push(mn >= 6 ? md : NaN); out.v.push(vn >= 6 ? v : NaN); out.partial.push(hn < 12); }
+  return out;
+}
+function renderFour() {
+  const s = state.series; if (!s) return; const Y = yearSeries(), el = $('#fourChart');
+  const W = 440, H = 150, L = 34, R = 16, T0 = 8, B = 18; const keys = Object.keys(FOUR).filter(k => FOUR[k]);
+  const vmax = Math.max(1, ...keys.flatMap(k => Y[k].filter(v => isFinite(v))));
+  const X = y => L + (W - L - R) * y / (NY - 1), Yp = v => T0 + (H - T0 - B) * (1 - v / vmax);
+  const col = { h: 'var(--ember)', n: 'var(--cold)', m: 'var(--amber)', v: 'var(--moss)' };
+  let g = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Yearly hotspots: FireRelay, raw stitch, MODIS only, VIIRS only">`;
+  for (const f of [0, .5, 1]) g += `<line x1="${L}" x2="${W - R}" y1="${Yp(f * vmax)}" y2="${Yp(f * vmax)}" style="stroke:var(--rule)"/><text x="${L - 4}" y="${Yp(f * vmax) + 3}" text-anchor="end">${kfmt(f * vmax)}</text>`;
+  for (let y = 0; y < NY; y += 5) g += `<text x="${X(y)}" y="${H - 4}" text-anchor="middle">${Y0 + y}</text>`;
+  g += `<line x1="${X(11)}" x2="${X(11)}" y1="${T0}" y2="${H - B}" style="stroke:var(--ink4)" stroke-dasharray="2 3"/>`;
+  for (const k of ['m', 'v', 'n', 'h']) { if (!FOUR[k]) continue; let d = '', pen = false; Y[k].forEach((v, y) => { if (!isFinite(v) || Y.partial[y]) { pen = false; return; } d += (pen ? 'L' : 'M') + X(y).toFixed(1) + ' ' + Yp(v).toFixed(1); pen = true; });
+    g += `<path d="${d}" fill="none" stroke="${col[k]}" stroke-width="${k === 'h' ? 2.4 : 1.4}" stroke-linejoin="round"/>`; }
+  el.innerHTML = g + '</svg>';
+  const yr = (k, a, b) => { let t = 0, n = 0; for (let y = a - Y0; y <= b - Y0; y++) if (isFinite(Y[k][y])) { t += Y[k][y]; n++; } return n ? t / n : NaN; };
+  const jumpN = yr('n', 2012, 2013) / yr('n', 2010, 2011), jumpH = yr('h', 2012, 2013) / yr('h', 2010, 2011);
+  $('#fourNote').textContent = isFinite(jumpN) && isFinite(jumpH) ? `Across the 2012 sensor change, a raw stitch jumps ${jumpN.toFixed(1)}×; FireRelay changes ${jumpH.toFixed(2)}×. MODIS alone sees only part of the fire, and VIIRS alone starts in 2012. Dotted line: the 2012 handover. Partial years are left out.` : '';
+}
+$$('.four-k button').forEach(b => b.onclick = () => { FOUR[b.dataset.s] = !FOUR[b.dataset.s]; if (!Object.values(FOUR).some(Boolean)) FOUR.h = true; $$('.four-k button').forEach(x => x.setAttribute('aria-pressed', String(FOUR[x.dataset.s]))); renderFour(); });
+// ---------------- upload GeoJSON ----------------
+$('#geoFile').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return; let gj; try { gj = JSON.parse(await f.text()); } catch { return alert('That file is not valid GeoJSON.'); }
+  const polys = []; const add = g => { if (!g) return; if (g.type === 'Polygon') polys.push(g.coordinates); else if (g.type === 'MultiPolygon') polys.push(...g.coordinates); else if (g.type === 'GeometryCollection') g.geometries.forEach(add); };
+  if (gj.type === 'FeatureCollection') gj.features.forEach(ft => add(ft.geometry)); else if (gj.type === 'Feature') add(gj.geometry); else add(gj);
+  if (!polys.length) return alert('No polygons found. Upload a GeoJSON file with Polygon or MultiPolygon areas.');
+  const nm = (gj.features && gj.features[0] && gj.features[0].properties && (gj.features[0].properties.name || gj.features[0].properties.NAME)) || f.name.replace(/\.(geo)?json$/i, '');
+  setAOI({ kind: 'upload', id: 'custom', name: nm, note: 'Your uploaded area. Every number below is computed in your browser from the harmonized record.', geometry: { type: 'MultiPolygon', coordinates: polys } }); e.target.value = '';
+};
+const mapEl = document.getElementById('map');
+mapEl.addEventListener('dragover', e => { e.preventDefault(); mapEl.classList.add('dropping'); });
+mapEl.addEventListener('dragleave', () => mapEl.classList.remove('dropping'));
+mapEl.addEventListener('drop', e => { e.preventDefault(); mapEl.classList.remove('dropping'); const f = e.dataTransfer.files[0]; if (!f) return; const dt = new DataTransfer(); dt.items.add(f); $('#geoFile').files = dt.files; $('#geoFile').onchange({ target: $('#geoFile') }); });
+// ---------------- printable report ----------------
+$('#report').onclick = () => {
+  const s = state.series; if (!s) return; const [yy, mm] = ym(state.m); const cal = $('#calendar svg');
+  const txt = sel => ($(sel) ? $(sel).innerText : ''); const css = `body{font-family:Georgia,serif;color:#17160f;margin:28px 34px;max-width:900px}h1{font-size:30px;margin:2px 0 4px}.k{font:10px/1.6 monospace;letter-spacing:.14em;color:#8c887d;text-transform:uppercase}.row{display:flex;gap:28px;margin:14px 0;border-top:1px solid #d3cec2;border-bottom:1px solid #d3cec2;padding:10px 0}.row div b{display:block;font:300 26px Helvetica,Arial,sans-serif}.cal svg{width:100%;height:auto}p{font-size:13px;line-height:1.5}.chk{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;font-size:12px}.foot{font:9px monospace;color:#8c887d;margin-top:18px;letter-spacing:.1em}`;
+  const met = $$('.metric').map(m => `<div><b>${m.querySelector('.v') ? m.querySelector('.v').innerText.split('\n')[0] : ''}</b><span class="k">${m.querySelector('.l') ? m.querySelector('.l').innerText : ''}</span></div>`).join('');
+  const w = window.open('', '_blank'); if (!w) return alert('Allow pop-ups to open the report.');
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>FireRelay bulletin · ${state.aoi.name}</title><style>${css}</style></head><body>
+  <div class="k">FIRERELAY BULLETIN · NASA FIRMS · MODIS + VIIRS IN NOAA-20 UNITS · ${$('#aoiMeta').textContent}</div><h1>${state.aoi.name}</h1><div class="k">SELECTED MONTH: ${MONL[mm].toUpperCase()} ${yy}</div>
+  <p><i>${txt('#narr')}</i></p><div class="row">${met}</div>
+  <div class="k">${txt('#nowStrip').replace(/\n/g, ' · ')}</div>
+  <div class="cal">${cal ? cal.outerHTML : ''}</div>
+  <div class="k" style="margin-top:12px">CHECKS</div><div class="chk"><div>${txt('#checks .chk:nth-child(1)')}</div><div>${txt('#checks .chk:nth-child(2)')}</div><div>${txt('#checks .chk:nth-child(3)')}</div></div>
+  <div class="cal" style="margin-top:12px">${$('#fourChart svg') ? $('#fourChart svg').outerHTML.replace(/var\(--ember\)/g, '#cf4a1d').replace(/var\(--cold\)/g, '#2f62b0').replace(/var\(--amber\)/g, '#b5600f').replace(/var\(--moss\)/g, '#4b8a46').replace(/var\(--[a-z0-9]+\)/g, '#b8b3a7') : ''}</div><p>${txt('#fourNote')}</p>
+  <div class="foot">Hotspots, nominal and high confidence, vegetation fires, NOAA-20 VIIRS 375 m units. Months before Feb 2012 are estimated from MODIS with an 80% range. Method and validation: firerelay.vercel.app/method.html · Link to this view: ${location.href}</div>
+  <script>setTimeout(()=>print(),400)<\/script></body></html>`); w.document.close();
+};
+function flipPeak() { const el = peak.getElement && peak.getElement(); if (!el || !map.hasLayer(peak)) return; const px = map.latLngToContainerPoint(peak.getLatLng()).x; el.querySelector('.pulse').classList.toggle('left', px > map.getSize().x - 170); }
+map.on('moveend zoomend', flipPeak);
+// ---------------- most unusual now ----------------
+let UNUSUAL = null;
+fetch('data/unusual.json').then(r => r.json()).then(u => { UNUSUAL = u; const [yy, mm] = ym(u.month);
+  $('#unusualList').innerHTML = `<h3>MOST UNUSUAL · ${MON[mm].toUpperCase()} ${yy} · WORLD</h3>` + u.items.map((it, i) => `<button class="file un" data-u="${i}"><span class="n">${xfmt(it.ratio)}×</span><span class="t">${esc(it.name)}<small>${it.rank === 1 ? 'HIGHEST' : ord(it.rank).toUpperCase() + ' HIGHEST'} OF 26 ${MON[mm].toUpperCase()}S · ${kfmt(it.now)}</small></span></button>`).join('');
+  $$('#unusualList .un').forEach(b => b.onclick = () => { const it = u.items[+b.dataset.u]; const aoi = boxAOI(...it.box); aoi.name = it.name; aoi.note = `One of the most unusual fire regions on Earth in ${MONL[mm]} ${yy}: ${xfmt(it.ratio)}× its typical ${MONL[mm]}.`; setAOI(aoi).then(() => setMonth(u.month, { force: true })); });
+}).catch(() => {});
+// ---------------- stories ----------------
+const EVENTS = [
+  { t: 'Borneo haze, September 2015', id: 'central-kalimantan', m: [2015, 9], date: '2015-09-24', bb: [-4, 110, 1, 116], p: 'Peat fires covered Borneo and Sumatra in smoke and pushed Singapore\'s PSI past 300.' },
+  { t: 'Amazon fires, August 2019', id: 'para', m: [2019, 8], date: '2019-08-15', bb: [-9, -57, -2, -48], p: 'The fires that made world news. Compare the month with its own 25-year history.' },
+  { t: 'Australia\'s Black Summer, December 2019', id: 'nsw', m: [2019, 12], date: '2019-12-31', bb: [-38, 147, -32, 153], p: 'New South Wales burned for months; this is the peak.' },
+  { t: 'California, September 2020', id: 'california', m: [2020, 9], date: '2020-09-09', bb: [34, -124, 42, -117], p: 'The month San Francisco\'s sky turned orange.' },
+  { t: 'Punjab stubble burning, November 2016', box: [73.8, 29.5, 77.2, 32.6], name: 'Punjab (India)', m: [2016, 11], date: '2016-11-02', bb: [28.5, 72.5, 33, 78.5], sat: 'S-NPP', lay: 'VIIRS_SNPP_CorrectedReflectance_TrueColor,VIIRS_SNPP_Thermal_Anomalies_375m_All', p: 'Crop-residue fires behind Delhi\'s worst smog on record.' },
+  { t: 'Kalimantan again, October 2026', id: 'central-kalimantan', m: [2026, 10], date: '2026-10-20', bb: [-4, 110, 1, 116], sat: 'NOAA-20', lay: 'VIIRS_NOAA20_CorrectedReflectance_TrueColor,VIIRS_NOAA20_Thermal_Anomalies_375m_All', p: 'The latest full month in the record: 17× a typical October.' },
+];
+const gibs = e => `https://wvs.earthdata.nasa.gov/api/v1/snapshot?REQUEST=GetSnapshot&TIME=${e.date}&BBOX=${e.bb.join(',')}&CRS=EPSG:4326&LAYERS=${e.lay || 'MODIS_Terra_CorrectedReflectance_TrueColor,MODIS_Terra_Thermal_Anomalies_All'}&FORMAT=image/jpeg&WIDTH=520&HEIGHT=300`;
+function openEvent(e) { $('#stories').hidden = true; const aoi = e.id ? presetAOI(PRESETS.find(p => p.id === e.id)) : Object.assign(boxAOI(...e.box), { name: e.name, note: e.p }); const m = (e.m[0] - Y0) * 12 + e.m[1] - 1;
+  setAOI(aoi).then(() => { setMonth(m, { force: true }); if (!state.cmp) $('#cmpBtn').click(); }); }
+let storiesDone = false;
+async function openStories() {
+  $('#stories').hidden = false; if (storiesDone) return; storiesDone = true;
+  $('#eventGrid').innerHTML = EVENTS.map((e, i) => `<button class="story ev" data-e="${i}"><img loading="lazy" alt="NASA satellite true-colour image, ${e.date}, with MODIS fire detections" src="${gibs(e)}"><div class="k">NASA ${e.sat || 'TERRA'} · ${e.date}</div><div class="t">${e.t}</div><p>${e.p}</p><div class="go">REPLAY THIS MONTH →</div></button>`).join('');
+  $$('#eventGrid .ev').forEach(b => b.onclick = () => openEvent(EVENTS[+b.dataset.e]));
+  const ids = ['indonesia', 'central-kalimantan', 'riau', 'para', 'california', 'cordoba', 'nsw', 'corrientes'];
+  const cards = [];
+  for (const id of ids) { const p = PRESETS.find(x => x.id === id); if (!p) continue; const aoi = presetAOI(p); const s = await computeSeries(cellWeights(aoi.geometry));
+    const modisAvg = m => { const k = AV[0][m] + AV[1][m]; return k ? (s.T[m] + s.A[m]) / k : NaN; };
+    const raw = m => m >= ERA.n20Start && AV[3][m] ? s.N2[m] : m >= ERA.snppStart && AV[2][m] ? s.SN[m] : modisAvg(m);
+    const yr = (f, a, b) => { let t = 0; for (let y = a; y <= b; y++) for (let j = 0; j < 12; j++) { const v = f((y - Y0) * 12 + j); if (!isNaN(v)) t += v; } return t / (b - a + 1); };
+    const nv = yr(raw, 2013, 2017) / yr(raw, 2006, 2010) - 1, hv = yr(m => s.H[m], 2013, 2017) / yr(m => s.H[m], 2006, 2010) - 1;
+    const tot = []; for (let y = 0; y < NY; y++) { let t = 0, n = 0; for (let j = 0; j < 12; j++) { const m = y * 12 + j; if (m <= LASTFULL && !isNaN(s.H[m])) { t += s.H[m]; n++; } } tot.push(n === 12 ? t : NaN); }
+    const best = tot.reduce((b, v, i) => v > (tot[b] || 0) ? i : b, 0); const lastY = Math.floor(LASTFULL / 12); let ytd = 0, ytdT = []; for (let y = 0; y < NY; y++) { let t = 0; for (let j = 0; j <= LASTFULL % 12; j++) { const v = s.H[y * 12 + j]; if (!isNaN(v)) t += v; } ytdT.push(t); } ytd = ytdT[lastY]; const rk = ytdT.filter(v => v > ytd).length + 1;
+    cards.push(`<button class="story" data-id="${id}"><div class="k">${p.group.split('(')[0].trim().toUpperCase()}</div><div class="t">${p.name}</div>
+      <div class="big"><div><span class="a">${pctS(nv)}</span><small>RAW STITCH</small></div><div><span class="b">${pctS(hv)}</span><small>FIRERELAY</small></div></div>
+      <p>Fire change from 2006–10 to 2013–17. Worst full year on record: <b>${Y0 + best}</b> (${fmt(tot[best])} hotspots). 2026 so far ranks <b>${ord(rk)}</b> of ${NY} for the same months.</p><div class="go">OPEN THIS PLACE →</div></button>`);
+    $('#storyGrid').innerHTML = cards.join(''); }
+  $$('#storyGrid .story').forEach(b => b.onclick = () => { $('#stories').hidden = true; const p = PRESETS.find(x => x.id === b.dataset.id); setAOI(presetAOI(p)); });
+}
+$('#storiesLink').onclick = e => { e.preventDefault(); openStories(); };
+$('#storiesClose').onclick = () => { $('#stories').hidden = true; };
+$('#stories').onclick = e => { if (e.target.id === 'stories') $('#stories').hidden = true; };
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#stories').hidden) $('#stories').hidden = true; });
+
 // ---------------- walkthrough ----------------
 const TOUR = [
-  { sel: '.rail', k: 'STEP 1 / 6 · PICK A PLACE', t: 'Start anywhere on Earth', p: 'Choose a place from the list, starting with the Singapore haze sources, or use DRAW and COORDS to make your own area.' },
+  { sel: '.rail', k: 'STEP 1 / 6 · PICK A PLACE', t: 'Start anywhere on Earth', p: 'Choose a place, or one of the world\'s most unusual fire regions this month. DRAW, COORDS or drop a GeoJSON file make your own area. STORIES replays famous fire seasons.' },
   { sel: '#map', k: 'STEP 2 / 6 · THE MAP', t: 'Every square is a 28 km cell', p: 'Darker squares had more fire that month, counted in one unit: NOAA-20 VIIRS hotspots. Hover a square for the raw sensor counts.' },
   { sel: '.tl', k: 'STEP 3 / 6 · THE RELAY', t: 'Press play: 2001 to today', p: 'The diamonds mark the satellite handovers in 2012 and 2018. Turn on NAIVE STITCH to see the false jump that FireRelay removes.' },
   { sel: '#calendar', k: 'STEP 4 / 6 · BURNING CALENDAR', t: '26 years, one row per year', p: 'Hatched months are estimated from MODIS. Switch to VS TYPICAL to see unusual months, or WEEK for weekly detail. Click any cell to jump there.' },
@@ -613,4 +720,4 @@ $('#themeBtn').onclick = () => {
   aoiLayer.eachLayer(l => l.setStyle && l.setStyle({ color: P.aoi }));
   if (state.series) { renderCalendar(); buildTimeline(); renderMapRamp(); setMonth(state.m, { force: true }); if (!$('#tableWrap').hidden) renderTable(); }
 };
-window.__fr = { state, setMonth, play, stop };
+window.__fr = { state, setMonth, play, stop, getTile, harmCell, TILESET, LASTFULL, ERA, srcOf };

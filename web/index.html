@@ -19,7 +19,7 @@
 <body>
 <header class="hdr">
   <div class="hdr-l rise" style="--d:0">
-    <div class="kickline">NASA FIRMS · MODIS + VIIRS · 2001–2026</div>
+    <div class="kickline">NASA FIRMS · MODIS + VIIRS · 2001–2026 <span class="fresh"><i></i>DATA TO 15 NOV 2026</span></div>
     <div class="brandrow">
       <a class="logo" href="./" aria-label="FireRelay home"><em>Fire</em>Relay</a>
       <span class="vrule" aria-hidden="true"></span>
@@ -32,6 +32,7 @@
     <div class="stat" title="Median error of yearly totals for the 12 named areas in hold-out years 2017 to 2019 (raw MODIS: 88%). Monthly totals for 1° blocks: 34%. Details on the Method page."><b id="stErr">12%</b><span>YEARLY ERROR</span></div>
     <nav class="nav mono" aria-label="Main">
       <a class="on" href="./" aria-current="page"><i class="dot"></i>CALENDAR</a>
+      <a href="#stories" id="storiesLink">STORIES</a>
       <a href="method.html">METHOD</a>
       <a href="method.html#data">DATA</a>
       <a href="https://github.com/su0as/firerelay" rel="noopener">SOURCE ↗</a>
@@ -47,13 +48,14 @@
       <button role="tab" aria-selected="false" data-tab="draw">DRAW</button>
       <button role="tab" aria-selected="false" data-tab="coords">COORDS</button>
     </div>
-    <div class="tabpanel" id="tab-places"><div id="presetList" class="files"></div></div>
+    <div class="tabpanel" id="tab-places"><div id="presetList" class="files"></div><div id="unusualList" class="files unusual"></div></div>
     <div class="tabpanel" id="tab-draw" hidden>
       <div class="tools mono">
         <button class="tbtn" id="drawRect">▭ RECTANGLE</button>
         <button class="tbtn" id="drawPoly">⬠ POLYGON</button>
         <button class="tbtn ghost" id="drawClear">CLEAR</button>
       </div>
+      <label class="tbtn upl mono" for="geoFile">⇪ UPLOAD GEOJSON</label><input type="file" id="geoFile" accept=".geojson,.json,application/geo+json,application/json" hidden>
       <p class="note" id="drawHint">Rectangle: press and drag on the map. Polygon: click each corner, double-click to finish.</p>
     </div>
     <div class="tabpanel" id="tab-coords" hidden>
@@ -120,6 +122,7 @@
       <button id="dlCsv" title="Download the monthly calendar as CSV">↓ CSV</button>
       <button id="dlGeo" title="Download the area as GeoJSON">↓ AREA</button>
       <button id="share" title="Copy a link to this view">↗ LINK</button>
+      <button id="report" title="Open a printable one-page bulletin for this area">⎙ REPORT</button>
     </div>
     <div class="now mono" id="nowStrip"></div>
     <div class="checks" id="checks" aria-live="polite">
@@ -127,6 +130,22 @@
       <div class="chk"><div class="ck mono">NAIVE STITCH VS FIRERELAY</div><div class="cv" id="ckNaive">–</div><div class="cd" id="ckNaiveD"></div></div>
       <div class="chk"><div class="ck mono">OUTLOOK FROM HISTORY</div><div class="cv" id="ckOut">–</div><div class="cd" id="ckOutD"></div></div>
     </div>
+    <section class="four" id="four">
+      <div class="four-h"><span class="ck mono">FOUR WAYS TO READ THE RECORD · YEARLY HOTSPOTS</span></div>
+      <div class="four-k mono" role="group" aria-label="Series">
+        <button data-s="h" aria-pressed="true"><i style="background:var(--ember)"></i>FIRERELAY</button>
+        <button data-s="n" aria-pressed="true"><i style="background:var(--cold)"></i>RAW STITCH</button>
+        <button data-s="m" aria-pressed="false"><i style="background:var(--amber)"></i>MODIS ONLY</button>
+        <button data-s="v" aria-pressed="false"><i style="background:var(--moss)"></i>VIIRS ONLY</button>
+      </div>
+      <div id="fourChart"></div>
+      <p class="cd" id="fourNote"></p>
+    </section>
+    <details class="limits"><summary class="mono">LIMITS · READ BEFORE USE</summary><ul>
+      <li>Hotspots are detections, not burned area. Clouds and thick smoke hide fires, so a quiet month can mean "not seen".</li>
+      <li>Months before Feb 2012 are estimated from MODIS (hatched). Peatland provinces such as Riau carry the largest errors; see "Measured error here".</li>
+      <li>Recent months use near-real-time data with static heat sources removed per cell; FIRMS later replaces them with standard data.</li>
+      <li>For seasonal and historical context, not same-day firefighting. Use NASA FIRMS for tactical alerts.</li></ul></details>
     <p class="fine">Hotspots, nominal and high confidence, vegetation fires only, in NOAA-20 VIIRS 375 m units, summed over 0.25° cells weighted by the share inside your area. Estimated months carry an 80% range from hold-out validation. <a href="method.html">How it works and how well it works →</a></p>
     </div>
   </aside>
@@ -149,6 +168,7 @@
 <script src="vendor/leaflet.js"></script>
 <script type="module" src="app.js"></script>
 <div id="tour" class="tour" hidden><div class="tour-spot" id="tourSpot"></div><div class="tour-card" id="tourCard" role="dialog" aria-live="polite"><svg class="tour-arrow" id="tourArrow" viewBox="0 0 60 60" aria-hidden="true"><path d="M8 52 C 20 30, 34 18, 52 8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><path d="M40 6 L53 7 L50 20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg><div class="tour-k mono" id="tourK"></div><div class="tour-t" id="tourT"></div><p class="tour-p" id="tourP"></p><div class="tour-b mono"><button id="tourSkip">SKIP</button><span><button id="tourBack">BACK</button><button id="tourNext" class="pri">NEXT →</button></span></div></div></div>
+<div id="stories" class="stories" hidden role="dialog" aria-label="Stories"><div class="st-in"><div class="st-h"><div><div class="ck mono">STORIES FROM THE RECORD</div><h2>What the harmonized record says that a raw stitch gets wrong</h2></div><button class="st-x mono" id="storiesClose">CLOSE ✕</button></div><div class="ck mono" style="margin:4px 0 10px">FIRE SEASONS SEEN FROM ORBIT · CLICK TO REPLAY</div><div class="st-grid" id="eventGrid"></div><div class="ck mono" style="margin:22px 0 10px">TREND CHECKS · RAW STITCH VS FIRERELAY, 2006–10 TO 2013–17</div><div class="st-grid" id="storyGrid"><p class="mono" style="color:var(--ink3)">COMPUTING FROM 26 YEARS OF DATA…</p></div><p class="fine">Each card is computed in your browser from the same tiles as the map. "Raw stitch" joins raw MODIS counts before 2012 to raw VIIRS counts after; FireRelay converts everything to NOAA-20 units first.</p></div></div>
 <div id="liveToast" class="live-toast mono" hidden></div>
 </body>
 </html>
