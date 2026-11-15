@@ -41,6 +41,7 @@ The test fits ratios on 2012–2016 and predicts S-NPP counts for 2017–2019 fr
 - **Method contest (same hold-out years, `pipeline/validate_methods.mjs`):** 1° monthly error 34% for FireRelay vs 43% one global ratio, 48% quantile mapping, 61% log-log regression, 87% raw MODIS. Yearly 5° tiles: 10% vs 26%, 106%, 134%, 88%.
 - **80% ranges recalibrated:** widened ×1.2 (fitted on Test A) so they hold 80% of Test A and 77% of Test B (drift years) monthly totals.
 - **In the app:** every area shows its own measured hold-out error, a naive-stitch vs FireRelay trend check, and a typical next-3-months outlook (history, not a forecast).
+- **App features (16 Nov):** most unusual fire regions on Earth for the latest month, a status label for every month (normal to record), Stories with NASA true-colour imagery of famous fire seasons, four-way record chart (FireRelay / raw stitch / MODIS only / VIIRS only), latest week and live Singapore PM2.5 and wind, guided tour, printable area report, GeoJSON upload or drag-and-drop.
 - **Weakest region:** Riau is overestimated in every hold-out year (+21% to +134%), so MODIS-era peatland estimates are the least certain part of the record.
 - **Log correlation at 5° monthly:** 0.92.
 - **Peak burning month:** same as VIIRS in about 77% of region-years.
