@@ -1,0 +1,296 @@
+{
+ "lambda": 30,
+ "note": "Median absolute % error of hold-out totals vs S-NPP VIIRS. monthly: unit-months with >=10 observed; annual: unit-years with >=100 observed. coverage80: share of hold-out monthly totals inside the app 80% range (block-level table from test A).",
+ "testA": {
+  "block": {
+   "monthly": {
+    "n": 154633,
+    "harmonized": 0.3414039815282655,
+    "rawModis": 0.8736263736263736,
+    "globalRatio": 0.4304230052598444
+   },
+   "annual": {
+    "n": 21438,
+    "harmonized": 0.1429089399332789,
+    "rawModis": 0.8759816821200221,
+    "globalRatio": 0.28064155368792126
+   },
+   "coverage80": 0.7569276933125529,
+   "coverageN": 154633
+  },
+  "tile": {
+   "monthly": {
+    "n": 20315,
+    "harmonized": 0.2604729753593165,
+    "rawModis": 0.8870967741935484,
+    "globalRatio": 0.3772659460250539
+   },
+   "annual": {
+    "n": 2060,
+    "harmonized": 0.10415135722804965,
+    "rawModis": 0.8828870909513682,
+    "globalRatio": 0.2570810614936805
+   },
+   "coverage80": 0.7170071375830667,
+   "coverageN": 20315
+  },
+  "globe": {
+   "monthly": {
+    "n": 36,
+    "harmonized": 0.015505046680105336,
+    "rawModis": 0.8791030977820116,
+    "globalRatio": 0.04806347902087899
+   },
+   "annual": {
+    "n": 3,
+    "harmonized": 0.005329135976229422,
+    "rawModis": 0.8781478480359622,
+    "globalRatio": 0.0189332224820009
+   },
+   "coverage80": 1,
+   "coverageN": 36
+  },
+  "region": {
+   "monthly": {
+    "n": 431,
+    "harmonized": 0.18434468525103506,
+    "rawModis": 0.8771067415730337,
+    "globalRatio": 0.2208403613214647
+   },
+   "annual": {
+    "n": 36,
+    "harmonized": 0.11587129846286165,
+    "rawModis": 0.8811261341242627,
+    "globalRatio": 0.14977986818561423
+   },
+   "coverage80": 0.7958236658932715,
+   "coverageN": 431,
+   "annualSignedErrorByRegion": {
+    "nsw": [
+     0.076,
+     0.108,
+     0.183
+    ],
+    "cordoba": [
+     0.072,
+     -0.045,
+     0.018
+    ],
+    "corrientes": [
+     0.11,
+     0.003,
+     0.097
+    ],
+    "indonesia": [
+     -0.051,
+     0.033,
+     0.149
+    ],
+    "para": [
+     0.114,
+     0.006,
+     0.01
+    ],
+    "south-sumatra": [
+     0.145,
+     0.125,
+     0.385
+    ],
+    "central-kalimantan": [
+     -0.183,
+     0.248,
+     0.118
+    ],
+    "west-kalimantan": [
+     -0.259,
+     0.179,
+     0.321
+    ],
+    "jambi": [
+     -0.142,
+     0.005,
+     0.331
+    ],
+    "riau": [
+     0.726,
+     0.21,
+     0.243
+    ],
+    "peninsular-malaysia": [
+     0.493,
+     -0.16,
+     -0.099
+    ],
+    "california": [
+     0.002,
+     0.04,
+     -0.021
+    ]
+   }
+  }
+ },
+ "testB": {
+  "block": {
+   "monthly": {
+    "n": 302048,
+    "harmonized": 0.36630455010168167,
+    "rawModis": 0.875,
+    "globalRatio": 0.44270072746765887
+   },
+   "annual": {
+    "n": 40898,
+    "harmonized": 0.17402827355604777,
+    "rawModis": 0.8799584620162528,
+    "globalRatio": 0.2807249960491943
+   },
+   "coverage80": 0.7235770473567115,
+   "coverageN": 302048
+  },
+  "tile": {
+   "monthly": {
+    "n": 40459,
+    "harmonized": 0.28964451548731746,
+    "rawModis": 0.8887900355871886,
+    "globalRatio": 0.3854924925788835
+   },
+   "annual": {
+    "n": 4081,
+    "harmonized": 0.13586749004666063,
+    "rawModis": 0.8850581580624601,
+    "globalRatio": 0.26294485987067107
+   },
+   "coverage80": 0.6735460589732816,
+   "coverageN": 40459
+  },
+  "globe": {
+   "monthly": {
+    "n": 72,
+    "harmonized": 0.06083739962078269,
+    "rawModis": 0.8830482525941139,
+    "globalRatio": 0.07136591125989197
+   },
+   "annual": {
+    "n": 6,
+    "harmonized": 0.02475209306497385,
+    "rawModis": 0.8806646055045655,
+    "globalRatio": 0.02448188462749369
+   },
+   "coverage80": 0.625,
+   "coverageN": 72
+  },
+  "region": {
+   "monthly": {
+    "n": 859,
+    "harmonized": 0.21581556497874385,
+    "rawModis": 0.8751099681938147,
+    "globalRatio": 0.25916348682100643
+   },
+   "annual": {
+    "n": 72,
+    "harmonized": 0.12459432092197913,
+    "rawModis": 0.8795596138863913,
+    "globalRatio": 0.15338593273054574
+   },
+   "coverage80": 0.7229336437718277,
+   "coverageN": 859,
+   "annualSignedErrorByRegion": {
+    "nsw": [
+     0.155,
+     0.049,
+     -0.164,
+     -0.041,
+     -0.084,
+     -0.078
+    ],
+    "cordoba": [
+     0.015,
+     0.003,
+     -0.103,
+     0.011,
+     -0.046,
+     -0.145
+    ],
+    "corrientes": [
+     0.025,
+     0.011,
+     -0.077,
+     -0.132,
+     0.12,
+     -0.063
+    ],
+    "indonesia": [
+     -0.187,
+     -0.08,
+     -0.207,
+     0.031,
+     -0.071,
+     -0.273
+    ],
+    "para": [
+     -0.014,
+     -0.054,
+     -0.009,
+     0.108,
+     0.129,
+     0.384
+    ],
+    "south-sumatra": [
+     0.228,
+     0.267,
+     -0.096,
+     0.162,
+     0.16,
+     0.086
+    ],
+    "central-kalimantan": [
+     -0.383,
+     -0.384,
+     -0.353,
+     0.222,
+     -0.188,
+     -0.457
+    ],
+    "west-kalimantan": [
+     -0.562,
+     -0.23,
+     -0.339,
+     -0.034,
+     -0.185,
+     -0.493
+    ],
+    "jambi": [
+     -0.345,
+     -0.045,
+     -0.439,
+     -0.164,
+     -0.051,
+     -0.042
+    ],
+    "riau": [
+     0.775,
+     1.344,
+     0.921,
+     0.65,
+     1.059,
+     0.118
+    ],
+    "peninsular-malaysia": [
+     -0.173,
+     -0.001,
+     -0.073,
+     -0.099,
+     0.294,
+     0.078
+    ],
+    "california": [
+     -0.107,
+     0.01,
+     0.137,
+     0.023,
+     0.214,
+     -0.08
+    ]
+   }
+  }
+ }
+}
