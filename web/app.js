@@ -24,7 +24,7 @@ const SRCNAME = { 1: 'MODIS · ESTIMATED', 2: 'S-NPP · CROSS-CALIBRATED', 3: 'N
 const SRCSHORT = { 1: 'MODIS · EST.', 2: 'S-NPP · CAL.', 3: 'NOAA-20 · OBS.' };
 const SRCLONG = { 1: 'estimated from Terra and Aqua MODIS', 2: 'S-NPP VIIRS, cross-calibrated to NOAA-20', 3: 'NOAA-20 VIIRS, observed' };
 if (LASTDATE) $('#aoiBuilt').textContent = `DATA TO ${LASTDATE.getUTCDate()} ${MON[LASTDATE.getUTCMonth()].toUpperCase()} ${LASTDATE.getUTCFullYear()}`;
-fetch('data/validation.json').then(r => r.json()).then(v => { $('#stErr').textContent = Math.round(100 * v.stable.block.medianAbsPctError.harmonized) + '%'; }).catch(() => {});
+fetch('data/validation_scales.json').then(r => r.json()).then(v => { $('#stErr').textContent = Math.round(100 * v.testA.region.annual.harmonized) + '%'; }).catch(() => {});
 fetch('data/build_stats.json').then(r => r.json()).then(s => { $('#stDet').textContent = Math.round(s.rows / 1e6) + 'M'; }).catch(() => {});
 
 // ---------------- colour ----------------
