@@ -76,7 +76,7 @@
   <p><b>Test A, stable orbits:</b> ratios fitted on 2012 to 2016 predict S-NPP counts for <b>2017 to 2019</b> from MODIS alone. <b>Test B, orbit drift:</b> ratios fitted on 2012 to 2019 predict <b>2020 to 2025</b>. Errors are measured on monthly totals for every unit with at least 10 observed detections, at three sizes: 0.25° cells, 1° blocks and 5° tiles.</p>
   <div id="skill"></div>
   <p>For scale, the two VIIRS instruments observing the same fires about 50 minutes apart disagree by a median of <b id="vvBlock"></b> at the 1° monthly scale. That is a rough floor for any harmonization. The MODIS-based estimate is about twice that floor, which is expected: MODIS sees 6 to 12 times fewer hotspots, so its counts are much noisier. The harmonized calendar picks the <b>same peak burning month</b> as VIIRS in <b id="peakPct"></b> of region-years.</p>
-  <p>These hold-out errors are also FireRelay's uncertainty model. Every MODIS-era month in the app has an 80% range taken from the error distribution for monthly totals of that size, shown as a hatched cell, a shaded band and the <code>lower80</code> and <code>upper80</code> columns in the CSV.</p>
+  <p>These hold-out errors are also FireRelay's uncertainty model. Every MODIS-era month in the app has an 80% range taken from the error distribution for monthly totals of that size, shown as a hatched cell, as an 80% range in the narration line and tooltips, and in the <code>lower80</code> and <code>upper80</code> columns of the CSV.</p>
   <div class="chart" id="globalChart"></div>
   <p class="hint">Worldwide hotspots per year. The raw sensors (thin lines) differ by up to a factor of 12. The harmonized record (thick orange) continues smoothly through the 2012 and 2018 sensor changes.</p>
   </div>
@@ -96,9 +96,10 @@
   <h2>Calendar design choices</h2>
   <ul>
     <li><b>Monthly by default; weekly as a deliberate option.</b> Monthly is the clearest step for spotting patterns. A weekly calendar is far busier: 53 weeks for each of 26 years. FireRelay makes it readable the way a GitHub contribution graph is: one thin row per year, colours relative to the selected area, and hatching for estimated weeks.</li>
+    <li><b>Play the record.</b> A timeline under the map plays the record month by month. The map, the calendar and an italic narration line move together, and each relay handover is marked.</li>
     <li><b>Compared with the place's own history.</b> For every month, the "vs typical month" view shows how many times the 2001 to 2025 median it is. Ranks and record markers show how unusual it is. Status cards answer the questions an emergency manager asks first: how the last full month compares, how the year to date compares, and when the burning season usually is.</li>
     <li><b>Honest about provenance.</b> Estimated months are hatched, partial months are dashed, and every tooltip shows the raw Terra, Aqua, S-NPP and NOAA-20 counts behind the number.</li>
-    <li><b>Accessible.</b> Colour ramps are ColorBrewer schemes that are safe for colour-blind readers. A table view is available for screen readers, and the calendar can be navigated with the arrow keys.</li>
+    <li><b>Accessible.</b> The fire ramp runs from dark to light, so it can be read by brightness alone, which works for colour-blind readers and in greyscale. Above-typical and below-typical months use warm and cool hues. A table view is available for screen readers, and the calendar can be navigated with the arrow keys.</li>
     <li><b>Built to last.</b> The site is static files only: about 50 MB of compressed tiles, with no server or database to go down. Links are shareable, and the CSV records units, sources and uncertainty.</li>
   </ul>
   </div>
